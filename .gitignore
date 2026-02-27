@@ -24,6 +24,10 @@ bin/
 obj/
 out/
 
+# Ensure all generated output in src/bin is ignored
+/src/bin/
+/src/bin/**
+
 # .NET / NuGet
 *.nupkg
 *.snupkg
