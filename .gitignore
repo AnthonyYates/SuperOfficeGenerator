@@ -10,6 +10,7 @@
 
 # Visual Studio cache/options directory
 .vs/
+src/.vs/
 
 # Build results
 [Dd]ebug/
