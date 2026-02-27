@@ -36,7 +36,7 @@ namespace SuperOfficeGenerator.Services
             SaleTypes = new List<SaleType>(await _listAgent.GetAllSaleTypeAsync());
             SaleSources = new List<Source>(await _listAgent.GetSourcesAsync());
             SelectionCategories = new List<SelectionCategory>(await _listAgent.GetAllSelectionCategoryAsync());
-            Console.WriteLine($"Metadata cached. Found {Countries.Count} countries.");
+            Console.WriteLine($"Metadata cached.");
         }
     }
 }

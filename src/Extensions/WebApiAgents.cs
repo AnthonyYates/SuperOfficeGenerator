@@ -75,14 +75,11 @@ namespace Microsoft.Extensions.DependencyInjection
         private static (string clientId, string redirectUri) GetOidcSettings(IConfigurationSection oidcSection)
         {
             var clientId = oidcSection.GetValue<string>("ClientId");
-            var redirectUri = oidcSection.GetValue<string>("RedirectUri");
             
             if (string.IsNullOrWhiteSpace(clientId))
                 throw new InvalidOperationException("OIDC ClientId is not configured.");
-            if (string.IsNullOrWhiteSpace(redirectUri))
-                throw new InvalidOperationException("OIDC RedirectUri is not configured.");
             
-            return (clientId, redirectUri);
+            return (clientId, "http://127.0.0.1");
         }
     }
 }

@@ -72,14 +72,14 @@ class Program
             var timer = new Stopwatch();
             timer.Start();
 
-            for (int i = 0; i <= iCompany; i++)
+            for (int i = 1; i <= iCompany; i++)
             {
                 personIds.Clear();
 
                 Console.WriteLine($"\n--- Generating Set {i}/{iCompany} ---");
                 
                 var contact = await generator.CreateContactAsync();
-                Console.WriteLine($"Created Contact ID: {contact.ContactId}");
+                Console.WriteLine($"Created Contact ID: {contact.ContactId}: {contact.Name} in {contact.Country.EnglishName}");
 
                 for(int j = 0; j < iContact; j++)
                 {

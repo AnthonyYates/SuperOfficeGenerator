@@ -20,12 +20,14 @@ namespace SuperOfficeGenerator.Utils
         public AuthenticationHelper(IConfiguration config)
         {
             _config = config;
+            var environment = _config["SuperOffice:Environment"] ?? "sod";
+
             var browser = new SystemBrowser(0);
             _redirectUri = string.Format($"http://127.0.0.1:{browser.Port}");
 
             var options = new OidcClientOptions
             {
-                Authority = "https://sod.superoffice.com/login/",
+                Authority = $"https://{environment}.superoffice.com/login/",
                 ClientId = _config["SuperOffice:ClientId"],
                 ClientSecret = _config["SuperOffice:ClientSecret"],
                 RedirectUri = _redirectUri,
