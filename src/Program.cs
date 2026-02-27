@@ -1,14 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using SuperOffice.WebApi.Agents;
 using SuperOfficeGenerator.Services;
 using SuperOfficeGenerator.Utils;
-using SuperOffice.WebApi;
-using SuperOffice.WebApi.Authorization;
+using System.Diagnostics;
 
 class Program
 {
@@ -21,7 +15,6 @@ class Program
 
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(config);
-        services.AddHttpContextAccessor();
         services.AddSingleton<AuthenticationHelper>();
         services.AddSingleton<MetadataService>();
         services.AddSingleton<EntityGenerator>();
@@ -49,28 +42,78 @@ class Program
 
             var generator = serviceProvider.GetRequiredService<EntityGenerator>();
 
-            Console.Write("Enter the number of entities to generate (N): ");
-            var input = Console.ReadLine();
-            if (!int.TryParse(input, out int n)) n = 5;
+            Console.Write("Enter the number of companies to generate (N): ");
+            var companies = Console.ReadLine();
 
-            for (int i = 1; i <= n; i++)
+            Console.Write("Enter the number of contacts per company to generate (N): ");
+            var contacts = Console.ReadLine();
+
+            Console.Write("Enter the number of projects per company to generate (N): ");
+            var projects = Console.ReadLine();
+
+            Console.Write("Enter the number of sales per company to generate (N): ");
+            var sales = Console.ReadLine();
+
+            Console.Write("Enter the number of selections per company to generate (N): ");
+            var selections = Console.ReadLine();
+
+
+            if (!int.TryParse(companies, out int iCompany)) iCompany = 5;
+            if (!int.TryParse(contacts, out int iContact)) iContact = 5;
+            if (!int.TryParse(projects, out int iProject)) iProject = 5;
+            if (!int.TryParse(sales, out int iSale)) iSale = 5;
+            if (!int.TryParse(selections, out int iSelection)) iSelection = 5;
+
+            List<int> personIds = new List<int>();
+            List<int> projectIds = new List<int>();
+            List<int> saleIds = new List<int>();
+            List<int> selectionIds = new List<int>();
+
+            var timer = new Stopwatch();
+            timer.Start();
+
+            for (int i = 0; i <= iCompany; i++)
             {
-                Console.WriteLine($"\n--- Generating Set {i}/{n} ---");
+                personIds.Clear();
+
+                Console.WriteLine($"\n--- Generating Set {i}/{iCompany} ---");
                 
                 var contact = await generator.CreateContactAsync();
                 Console.WriteLine($"Created Contact ID: {contact.ContactId}");
 
-                var personId = await generator.CreatePersonAsync(contact.ContactId, contact.Country);
-                Console.WriteLine($"Created Person ID: {personId}");
+                for(int j = 0; j < iContact; j++)
+                {
+                    var person = await generator.CreatePersonAsync(contact.ContactId, contact.Country);
+                    Console.WriteLine($"\tCreated Person ID: {person.PersonId}, {person.FullName}, in {contact.Name}");
+                    personIds.Add(person.PersonId);
+                }
 
-                var projectId = await generator.CreateProjectAsync(contact.ContactId, personId);
-                Console.WriteLine($"Created Project ID: {projectId}");
+                for (int k = 0; k < iProject; k++)
+                {
+                    var project = await generator.CreateProjectAsync(contact.ContactId, personIds);
+                    Console.WriteLine($"\tCreated Project ID: {project.ProjectId}: {project.Name}");
+                    projectIds.Add(project.ProjectId);
+                }
 
-                var saleId = await generator.CreateSaleAsync(contact.ContactId, personId, projectId);
-                Console.WriteLine($"Created Sale ID: {saleId}");
+                for (int l = 0; l < iSale; l++)
+                {
+                    var sale = await generator.CreateSaleAsync(contact.ContactId, personIds[0], projectIds[0]);
+                    Console.WriteLine($"\tCreated Sale ID: {sale.SaleId}, {sale.Heading} for {sale.Amount}");
+                }
+
+                for (int k = 0; k < iSelection; k++)
+                {
+                    var selection = await generator.CreateSelectionAsync(k);
+                    Console.WriteLine($"\tCreated Selection ID: {selection.SelectionId}: {selection.Name}");
+                }
+
+                Console.WriteLine($"Running time: {timer.Elapsed.Minutes} minutes and {timer.Elapsed.Seconds} seconds");
             }
 
-            Console.WriteLine("\nGeneration completed successfully!");
+            timer.Stop();
+
+
+            Console.WriteLine($"\nGeneration completed successfully in {timer.Elapsed.Minutes} minutes and {timer.Elapsed.Seconds} seconds!");
         }
         catch (Exception ex)
         {

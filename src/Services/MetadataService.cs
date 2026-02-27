@@ -17,6 +17,8 @@ namespace SuperOfficeGenerator.Services
         public List<ProjectStatus> ProjectStatuses { get; private set; } = new();
         public List<SaleType> SaleTypes { get; private set; } = new();
         public List<Source> SaleSources { get; private set; } = new();
+        public List<SelectionCategory> SelectionCategories { get; private set; } = new();
+
 
         public MetadataService(IListAgent listAgent)
         {
@@ -33,6 +35,7 @@ namespace SuperOfficeGenerator.Services
             ProjectStatuses = new List<ProjectStatus>(await _listAgent.GetProjectStatusesAsync());
             SaleTypes = new List<SaleType>(await _listAgent.GetAllSaleTypeAsync());
             SaleSources = new List<Source>(await _listAgent.GetSourcesAsync());
+            SelectionCategories = new List<SelectionCategory>(await _listAgent.GetAllSelectionCategoryAsync());
             Console.WriteLine($"Metadata cached. Found {Countries.Count} countries.");
         }
     }
