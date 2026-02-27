@@ -54,7 +54,7 @@ class Program
             Console.Write("Enter the number of sales per company to generate (N): ");
             var sales = Console.ReadLine();
 
-            Console.Write("Enter the number of selections per company to generate (N): ");
+            Console.Write("Enter the total number of selections to generate (N): ");
             var selections = Console.ReadLine();
 
 
@@ -101,13 +101,23 @@ class Program
                     Console.WriteLine($"\tCreated Sale ID: {sale.SaleId}, {sale.Heading} for {sale.Amount}");
                 }
 
-                for (int k = 0; k < iSelection; k++)
-                {
-                    var selection = await generator.CreateSelectionAsync(k);
-                    Console.WriteLine($"\tCreated Selection ID: {selection.SelectionId}: {selection.Name}");
-                }
-
                 Console.WriteLine($"Running time: {timer.Elapsed.Minutes} minutes and {timer.Elapsed.Seconds} seconds");
+            }
+
+            var elapsedTime = timer.Elapsed;
+
+            for (int k = 0; k < iSelection; k++)
+            {
+                var selection = await generator.CreateSelectionAsync(k);
+                Console.WriteLine($"\tCreated Selection ID: {selection.SelectionId}: {selection.Name}");
+
+                // write out the elapsed time after every minute since the elapsedTime variable
+
+                if (timer.Elapsed - elapsedTime > TimeSpan.FromMinutes(1))
+                {
+                    Console.WriteLine($"Running time: {timer.Elapsed.Minutes} minutes and {timer.Elapsed.Seconds} seconds");
+                    elapsedTime = timer.Elapsed;
+                }
             }
 
             timer.Stop();

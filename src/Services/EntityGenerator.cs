@@ -124,7 +124,7 @@ namespace SuperOfficeGenerator.Services
         internal async Task<SelectionEntity> CreateSelectionAsync(int k)
         {
             var selection = await _selectionAgent.CreateDefaultSelectionEntityAsync();
-            selection.Name = $"{_faker.Name.JobTitle()} {_faker.Name.JobArea()} selection";
+            selection.Name = $"{_faker.Name.JobTitle()} {_faker.Name.JobArea()} selection {k}";
             selection.SelectionType = SelectionType.Dynamic;
             selection.SelectionCategory = _metadata.SelectionCategories[_random.Next(_metadata.SelectionCategories.Count)];
             selection.TargetTableName = "contact";
