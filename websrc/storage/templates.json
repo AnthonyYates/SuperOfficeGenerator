@@ -1,0 +1,199 @@
+[
+  {
+    "id": "tmpl-onboarding",
+    "name": "Onboarding Burst",
+    "description": "Creates demo company/contact/follow-up data for pilot tenants.",
+    "createdBy": "system",
+    "updatedAt": "2026-03-02T17:09:41.385Z",
+    "entities": [
+      {
+        "entityType": "company",
+        "quantityDefault": 10,
+        "localeFallbacks": [
+          "en",
+          "nb"
+        ],
+        "fields": [
+          {
+            "field": "name",
+            "strategy": "faker",
+            "fakerPath": "company.name"
+          },
+          {
+            "field": "phone",
+            "strategy": "faker",
+            "fakerPath": "phone.number"
+          },
+          {
+            "field": "email",
+            "strategy": "faker",
+            "fakerPath": "internet.email"
+          }
+        ]
+      },
+      {
+        "entityType": "contact",
+        "quantityDefault": 15,
+        "localeFallbacks": [
+          "en",
+          "nb"
+        ],
+        "fields": [
+          {
+            "field": "firstName",
+            "strategy": "faker",
+            "fakerPath": "person.firstName"
+          },
+          {
+            "field": "lastName",
+            "strategy": "faker",
+            "fakerPath": "person.lastName"
+          },
+          {
+            "field": "mobile",
+            "strategy": "faker",
+            "fakerPath": "phone.number"
+          }
+        ]
+      },
+      {
+        "entityType": "followUp",
+        "quantityDefault": 5,
+        "localeFallbacks": [
+          "en"
+        ],
+        "fields": [
+          {
+            "field": "title",
+            "strategy": "faker",
+            "fakerPath": "lorem.words"
+          },
+          {
+            "field": "description",
+            "strategy": "faker",
+            "fakerPath": "lorem.sentence"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Full Provisioning Template",
+    "description": "Companies, persons, projects, follow-ups, and sales with FK chaining.",
+    "entities": [
+      {
+        "entityType": "company",
+        "quantityDefault": 10,
+        "localeFallbacks": [
+          "en"
+        ],
+        "fields": [
+          {
+            "field": "name",
+            "strategy": "faker",
+            "fakerPath": "company.name"
+          },
+          {
+            "field": "department",
+            "strategy": "faker",
+            "fakerPath": "commerce.department"
+          },
+          {
+            "field": "orgnr",
+            "strategy": "faker",
+            "fakerPath": "string.numeric"
+          }
+        ]
+      },
+      {
+        "entityType": "contact",
+        "quantityDefault": 20,
+        "localeFallbacks": [
+          "en"
+        ],
+        "fields": [
+          {
+            "field": "firstName",
+            "strategy": "faker",
+            "fakerPath": "person.firstName"
+          },
+          {
+            "field": "lastName",
+            "strategy": "faker",
+            "fakerPath": "person.lastName"
+          },
+          {
+            "field": "title",
+            "strategy": "faker",
+            "fakerPath": "person.jobTitle"
+          },
+          {
+            "field": "phone",
+            "strategy": "faker",
+            "fakerPath": "phone.number"
+          },
+          {
+            "field": "email",
+            "strategy": "faker",
+            "fakerPath": "internet.email"
+          }
+        ]
+      },
+      {
+        "entityType": "project",
+        "quantityDefault": 5,
+        "localeFallbacks": [
+          "en"
+        ],
+        "fields": [
+          {
+            "field": "name",
+            "strategy": "faker",
+            "fakerPath": "commerce.productName"
+          },
+          {
+            "field": "number",
+            "strategy": "faker",
+            "fakerPath": "string.alphanumeric"
+          }
+        ]
+      },
+      {
+        "entityType": "followUp",
+        "quantityDefault": 15,
+        "localeFallbacks": [
+          "en"
+        ],
+        "fields": [
+          {
+            "field": "title",
+            "strategy": "faker",
+            "fakerPath": "lorem.words"
+          }
+        ]
+      },
+      {
+        "entityType": "sale",
+        "quantityDefault": 10,
+        "localeFallbacks": [
+          "en"
+        ],
+        "fields": [
+          {
+            "field": "heading",
+            "strategy": "faker",
+            "fakerPath": "commerce.productName"
+          },
+          {
+            "field": "amount",
+            "strategy": "faker",
+            "fakerPath": "finance.amount"
+          }
+        ]
+      }
+    ],
+    "id": "tmpl-mtbajpufra",
+    "createdBy": "operator",
+    "updatedAt": "2026-03-14T09:12:14.868Z"
+  }
+]

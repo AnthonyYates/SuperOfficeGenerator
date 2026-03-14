@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -r \"DatabaseTableAgent\\\\|ListAgent\\\\|insertAsync\\\\|MassOperation\" /c/github/SuperOfficeGenerator/websrc/node_modules/@superoffice/webapi/dist/esm/ --include=*.js -l)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(ls -la /c/github/SuperOfficeGenerator/websrc/app/jobs/[id]/)",
+      "WebFetch(domain:docs.superoffice.com)"
+    ]
+  }
+}

@@ -1,0 +1,42 @@
+[
+  {
+    "id": "env-sandbox",
+    "name": "Sandbox Tenant",
+    "tenantId": "TN-sbx-001",
+    "clientId": "sandbox-client",
+    "scopes": [
+      "openid",
+      "offline_access",
+      "crm/comp.write"
+    ],
+    "isActive": true,
+    "createdBy": "system",
+    "createdAt": "2026-03-02T17:09:41.385Z"
+  },
+  {
+    "id": "env-prod",
+    "name": "Production Pilot",
+    "tenantId": "TN-prod-001",
+    "clientId": "pilot-client",
+    "scopes": [
+      "openid",
+      "offline_access",
+      "crm/full"
+    ],
+    "isActive": false,
+    "createdBy": "system",
+    "createdAt": "2026-03-02T17:09:41.385Z"
+  },
+  {
+    "name": "SuperOffice DevNet",
+    "tenantId": "Cust26759",
+    "clientId": "6cf25376616343b38d14ddcd804f2891",
+    "scopes": [
+      "openid"
+    ],
+    "isActive": true,
+    "createdBy": "operator",
+    "id": "env-a9meru50bn",
+    "createdAt": "2026-03-14T09:11:33.550Z"
+  }
+]
