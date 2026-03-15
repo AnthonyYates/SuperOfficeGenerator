@@ -34,6 +34,8 @@ This repository currently contains two application surfaces:
 
 The web application in `websrc` is a Next.js 14 App Router application that authenticates with SuperOffice, stores templates and job manifests as JSON, and executes provisioning jobs through the SuperOffice Web API.
 
+![interface](assets/images/web-generator.png)
+
 ### Architecture Overview
 
 ```mermaid
