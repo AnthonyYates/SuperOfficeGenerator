@@ -1,8 +1,6 @@
 import "server-only";
 
 import {
-  readEnvironments,
-  writeEnvironments,
   readTemplates,
   writeTemplates,
   readJobs,
@@ -10,15 +8,10 @@ import {
   newId
 } from "./storage";
 import type {
-  EnvironmentBundle,
   JobManifest,
   JobStatus,
   TemplateDefinition
 } from "./types";
-
-export async function listEnvironments() {
-  return readEnvironments();
-}
 
 export async function listTemplates() {
   return readTemplates();
@@ -27,18 +20,6 @@ export async function listTemplates() {
 export async function listJobs() {
   const jobs = await readJobs();
   return jobs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-}
-
-export async function saveEnvironment(input: Omit<EnvironmentBundle, "id" | "createdAt">) {
-  const envs = await readEnvironments();
-  const env: EnvironmentBundle = {
-    ...input,
-    id: newId("env"),
-    createdAt: new Date().toISOString()
-  };
-  envs.push(env);
-  await writeEnvironments(envs);
-  return env;
 }
 
 export async function saveTemplate(
@@ -56,9 +37,24 @@ export async function saveTemplate(
   return template;
 }
 
+export async function updateTemplate(
+  id: string,
+  input: Omit<TemplateDefinition, "id" | "updatedAt" | "createdBy">
+) {
+  const templates = await readTemplates();
+  const idx = templates.findIndex((t) => t.id === id);
+  if (idx < 0) throw new Error("Template not found");
+  templates[idx] = {
+    ...templates[idx],
+    ...input,
+    updatedAt: new Date().toISOString()
+  };
+  await writeTemplates(templates);
+  return templates[idx];
+}
+
 export interface JobRequest {
   templateId: string;
-  environmentId: string;
   counts: Record<string, number>;
   locales: string[];
   createdBy: string;
@@ -77,7 +73,6 @@ export async function enqueueJob(request: JobRequest): Promise<JobManifest> {
   const manifest: JobManifest = {
     id: newId("job"),
     templateId: template.id,
-    environmentId: request.environmentId,
     locales: request.locales.length ? request.locales : collectTemplateLocales(template),
     requestedCounts: request.counts,
     apiMode: request.apiMode,
@@ -122,8 +117,13 @@ export async function patchJob(jobId: string, patch: Partial<JobManifest>): Prom
 }
 
 export async function deleteEnvironment(id: string): Promise<void> {
-  const envs = await readEnvironments();
-  await writeEnvironments(envs.filter((e) => e.id !== id));
+  // no-op: environments removed
+  void id;
+}
+
+export async function deleteJob(id: string): Promise<void> {
+  const jobs = await readJobs();
+  await writeJobs(jobs.filter((j) => j.id !== id));
 }
 
 export async function deleteTemplate(id: string): Promise<void> {
@@ -132,15 +132,13 @@ export async function deleteTemplate(id: string): Promise<void> {
 }
 
 export async function summarizeDashboard() {
-  const [envs, templates, jobs] = await Promise.all([
-    readEnvironments(),
+  const [templates, jobs] = await Promise.all([
     readTemplates(),
     readJobs()
   ]);
   const totalEntities = jobs.reduce((sum, job) => sum + job.metrics.total, 0);
   const success = jobs.reduce((sum, job) => sum + job.metrics.success, 0);
   return {
-    envCount: envs.length,
     templateCount: templates.length,
     jobCount: jobs.length,
     successRate: jobs.length === 0 ? 100 : Math.round((success / Math.max(totalEntities, 1)) * 100)

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { executeJob } from "@/lib/mass-ops";
 import { getJob, getTemplate, updateJobStatus, patchJob } from "@/lib/services";
-import type { JobPhaseEvent } from "@/lib/types";
+import type { JobPhaseEvent, JobPhaseResult } from "@/lib/types";
 
 export async function GET(
   _req: Request,
@@ -46,6 +46,7 @@ export async function GET(
       let totalSuccess = 0;
       let totalFailed = 0;
       const startTime = Date.now();
+      const phases: Record<string, JobPhaseResult> = {};
 
       const send = (event: JobPhaseEvent) => {
         controller.enqueue(enc.encode(`data: ${JSON.stringify(event)}\n\n`));
@@ -63,6 +64,7 @@ export async function GET(
           if (event.type === "phase_done") {
             totalSuccess += event.success;
             totalFailed += event.failed;
+            phases[event.entityType] = { success: event.success, failed: event.failed };
           }
         }
 
@@ -77,7 +79,8 @@ export async function GET(
         await patchJob(job.id, {
           status: finalStatus,
           completedAt: new Date().toISOString(),
-          metrics
+          metrics,
+          phases
         });
 
         send({ type: "job_done", status: finalStatus, metrics });

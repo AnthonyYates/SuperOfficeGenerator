@@ -3,12 +3,11 @@ import "server-only";
 import { promises as fs } from "fs";
 import path from "path";
 import { faker } from "@faker-js/faker";
-import type { EnvironmentBundle, TemplateDefinition, JobManifest } from "./types";
+import type { TemplateDefinition, JobManifest } from "./types";
 
 const storageDir = path.join(process.cwd(), "storage");
 
 const files = {
-  environments: path.join(storageDir, "environments.json"),
   templates: path.join(storageDir, "templates.json"),
   jobs: path.join(storageDir, "jobs.json")
 } as const;
@@ -36,29 +35,6 @@ async function writeJson<T>(filepath: string, data: T) {
   await ensureDir();
   await fs.writeFile(filepath, JSON.stringify(data, null, 2), "utf8");
 }
-
-const seedEnvironments = (): EnvironmentBundle[] => [
-  {
-    id: "env-sandbox",
-    name: "Sandbox Tenant",
-    tenantId: "TN-sbx-001",
-    clientId: "sandbox-client",
-    scopes: ["openid", "offline_access", "crm/comp.write"],
-    isActive: true,
-    createdBy: "system",
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: "env-prod",
-    name: "Production Pilot",
-    tenantId: "TN-prod-001",
-    clientId: "pilot-client",
-    scopes: ["openid", "offline_access", "crm/full"],
-    isActive: false,
-    createdBy: "system",
-    createdAt: new Date().toISOString()
-  }
-];
 
 const seedTemplates = (): TemplateDefinition[] => [
   {
@@ -102,14 +78,6 @@ const seedTemplates = (): TemplateDefinition[] => [
 ];
 
 const seedJobs = (): JobManifest[] => [];
-
-export async function readEnvironments() {
-  return readJson<EnvironmentBundle[]>(files.environments, seedEnvironments);
-}
-
-export async function writeEnvironments(envs: EnvironmentBundle[]) {
-  await writeJson(files.environments, envs);
-}
 
 export async function readTemplates() {
   return readJson<TemplateDefinition[]>(files.templates, seedTemplates);

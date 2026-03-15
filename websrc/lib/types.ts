@@ -1,16 +1,5 @@
 export type LocaleCode = string;
 
-export interface EnvironmentBundle {
-  id: string;
-  name: string;
-  tenantId: string;
-  clientId: string;
-  scopes: string[];
-  isActive: boolean;
-  createdBy: string;
-  createdAt: string;
-}
-
 export interface TemplateFieldRule {
   field: string;
   strategy: "static" | "faker" | "list" | "sequence";
@@ -62,10 +51,14 @@ export type JobPhaseEvent =
 
 export type JobApiMode = "entity" | "massops";
 
+export interface JobPhaseResult {
+  success: number;
+  failed: number;
+}
+
 export interface JobManifest {
   id: string;
   templateId: string;
-  environmentId: string;
   locales: LocaleCode[];
   requestedCounts: Record<string, number>;
   apiMode: JobApiMode;
@@ -75,6 +68,8 @@ export interface JobManifest {
   completedAt?: string;
   metrics: JobMetricSummary;
   items: JobItemLog[];
+  /** Per-entity phase results persisted when the job completes */
+  phases?: Record<string, JobPhaseResult>;
 }
 
 // NextAuth session augmentation — accessToken and webApiUrl added by JWT/session callbacks

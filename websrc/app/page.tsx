@@ -1,11 +1,10 @@
 import Link from "next/link";
-import { summarizeDashboard, listJobs, listEnvironments, listTemplates } from "@/lib/services";
+import { summarizeDashboard, listJobs, listTemplates } from "@/lib/services";
 
 export default async function DashboardPage() {
-  const [summary, jobs, envs, templates] = await Promise.all([
+  const [summary, jobs, templates] = await Promise.all([
     summarizeDashboard(),
     listJobs(),
-    listEnvironments(),
     listTemplates()
   ]);
 
@@ -22,8 +21,7 @@ export default async function DashboardPage() {
         </p>
       </header>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Environments" value={summary.envCount} />
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <KpiCard label="Templates" value={summary.templateCount} />
         <KpiCard label="Jobs" value={summary.jobCount} />
         <KpiCard label="Success rate" value={`${summary.successRate}%`} accent />
@@ -73,21 +71,14 @@ export default async function DashboardPage() {
           </div>
           <ol className="space-y-3 text-sm text-slate-600">
             <li>
-              <strong className="text-slate-900">1.</strong> Configure SuperOffice tenants under{" "}
-              <Link className="text-brand underline" href="/environments">
-                Environments
-              </Link>{" "}
-              (client IDs, scopes defined in .env).
-            </li>
-            <li>
-              <strong className="text-slate-900">2.</strong> Build templates with faker rules on the{" "}
+              <strong className="text-slate-900">1.</strong> Build templates with faker rules on the{" "}
               <Link className="text-brand underline" href="/templates">
                 Templates
               </Link>{" "}
               screen.
             </li>
             <li>
-              <strong className="text-slate-900">3.</strong> Launch provisioning jobs with locales +
+              <strong className="text-slate-900">2.</strong> Launch provisioning jobs with locales +
               per-entity counts on the{" "}
               <Link className="text-brand underline" href="/jobs">
                 Jobs

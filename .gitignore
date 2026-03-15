@@ -74,3 +74,4 @@ websrc/node_modules/
 websrc/.next
 websrc/.env.local
 websrc/.env.development.local
+websrc/tsconfig.tsbuildinfo

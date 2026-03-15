@@ -1,21 +1,20 @@
 "use client";
 
 import { useFormState } from "react-dom";
-import type { EnvironmentBundle, TemplateDefinition } from "@/lib/types";
+import type { TemplateDefinition } from "@/lib/types";
 import { createJobAction } from "@/app/actions";
 
 const initialState = { error: null as null | string | Record<string, string[]>, success: false };
 
 interface JobFormProps {
-  environments: EnvironmentBundle[];
   templates: TemplateDefinition[];
 }
 
-export function JobForm({ environments, templates }: JobFormProps) {
+export function JobForm({ templates }: JobFormProps) {
   const [state, formAction] = useFormState(createJobAction, initialState);
 
   const firstTemplate = templates[0];
-  const isDisabled = !environments.length || !templates.length;
+  const isDisabled = !templates.length;
 
   return (
     <form action={formAction} className="card space-y-4">
@@ -25,7 +24,7 @@ export function JobForm({ environments, templates }: JobFormProps) {
           Jobs serialize manifests to encrypted JSON, then stream workloads to SuperOffice.WebApi.
         </p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div>
         <label className="text-sm font-medium text-slate-700">
           Template
           <select
@@ -36,20 +35,6 @@ export function JobForm({ environments, templates }: JobFormProps) {
             {templates.map((template) => (
               <option key={template.id} value={template.id}>
                 {template.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-sm font-medium text-slate-700">
-          Environment
-          <select
-            name="environmentId"
-            disabled={isDisabled}
-            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-brand focus:outline-none"
-          >
-            {environments.map((env) => (
-              <option key={env.id} value={env.id}>
-                {env.name}
               </option>
             ))}
           </select>
@@ -101,21 +86,29 @@ export function JobForm({ environments, templates }: JobFormProps) {
           </label>
         </div>
       </div>
-      <div className="grid gap-4 sm:grid-cols-3">
-        {(["company", "contact", "followUp", "project", "sale"] as const).map((key) => (
-          <label key={key} className="text-sm font-medium text-slate-700">
-            {key} count
-            <input
-              name={`${key}Count`}
-              type="number"
-              min={1}
-              disabled={isDisabled}
-              defaultValue={firstTemplate?.entities.find((e) => e.entityType === key)?.quantityDefault ?? ""}
-              placeholder="skip"
-              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-brand focus:outline-none"
-            />
-          </label>
-        ))}
+      <div className="space-y-2">
+        <p className="text-sm font-medium text-slate-700">
+          Entity counts
+          <span className="ml-2 text-xs font-normal text-slate-400">
+            — company is the total; all others are <strong>per company</strong>
+          </span>
+        </p>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {(["company", "contact", "followUp", "project", "sale"] as const).map((key) => (
+            <label key={key} className="text-sm font-medium text-slate-700">
+              {key}{key !== "company" ? " / co." : ""}
+              <input
+                name={`${key}Count`}
+                type="number"
+                min={1}
+                disabled={isDisabled}
+                defaultValue={firstTemplate?.entities.find((e) => e.entityType === key)?.quantityDefault ?? ""}
+                placeholder="skip"
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-brand focus:outline-none"
+              />
+            </label>
+          ))}
+        </div>
       </div>
       {state.error && (
         <p className="text-sm text-rose-600">

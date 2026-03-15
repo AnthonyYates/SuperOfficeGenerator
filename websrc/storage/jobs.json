@@ -1,8 +1,97 @@
 [
   {
-    "id": "job-eiyeaqgfpi",
+    "id": "job-bx5ytfiqqo",
+    "templateId": "tmpl-mtbajpufra",
+    "locales": [
+      "en",
+      "nb"
+    ],
+    "requestedCounts": {
+      "company": 10,
+      "contact": 5,
+      "followUp": 2,
+      "project": 5,
+      "sale": 5
+    },
+    "apiMode": "entity",
+    "status": "succeeded",
+    "createdBy": "operator",
+    "createdAt": "2026-03-14T16:18:24.660Z",
+    "metrics": {
+      "total": 180,
+      "success": 180,
+      "failed": 0,
+      "durationSeconds": 27
+    },
+    "items": [],
+    "completedAt": "2026-03-14T16:18:52.108Z",
+    "phases": {
+      "company": {
+        "success": 10,
+        "failed": 0
+      },
+      "contact": {
+        "success": 50,
+        "failed": 0
+      },
+      "project": {
+        "success": 50,
+        "failed": 0
+      },
+      "sale": {
+        "success": 50,
+        "failed": 0
+      },
+      "followUp": {
+        "success": 20,
+        "failed": 0
+      }
+    }
+  },
+  {
+    "id": "job-yk1vwjby7p",
     "templateId": "tmpl-onboarding",
-    "environmentId": "env-sandbox",
+    "locales": [
+      "en",
+      "nb"
+    ],
+    "requestedCounts": {
+      "company": 10,
+      "contact": 5,
+      "followUp": 5,
+      "project": 5,
+      "sale": 5
+    },
+    "apiMode": "entity",
+    "status": "succeeded",
+    "createdBy": "operator",
+    "createdAt": "2026-03-14T16:17:45.720Z",
+    "metrics": {
+      "total": 110,
+      "success": 110,
+      "failed": 0,
+      "durationSeconds": 17
+    },
+    "items": [],
+    "completedAt": "2026-03-14T16:18:05.387Z",
+    "phases": {
+      "company": {
+        "success": 10,
+        "failed": 0
+      },
+      "contact": {
+        "success": 50,
+        "failed": 0
+      },
+      "followUp": {
+        "success": 50,
+        "failed": 0
+      }
+    }
+  },
+  {
+    "id": "job-4gwr9rrsou",
+    "templateId": "tmpl-mtbajpufra",
     "locales": [
       "en",
       "nb"
@@ -11,26 +100,137 @@
       "company": 10,
       "contact": 15,
       "followUp": 5,
-      "project": 2,
-      "sale": 2
+      "project": 5,
+      "sale": 5
     },
     "apiMode": "massops",
-    "status": "failed",
+    "status": "succeeded",
     "createdBy": "operator",
-    "createdAt": "2026-03-14T10:34:17.263Z",
+    "createdAt": "2026-03-14T15:53:48.505Z",
     "metrics": {
-      "total": 10,
-      "success": 0,
-      "failed": 10,
+      "total": 310,
+      "success": 310,
+      "failed": 0,
       "durationSeconds": 4
     },
     "items": [],
-    "completedAt": "2026-03-14T10:34:22.227Z"
+    "completedAt": "2026-03-14T15:53:52.918Z",
+    "phases": {
+      "company": {
+        "success": 10,
+        "failed": 0
+      },
+      "contact": {
+        "success": 150,
+        "failed": 0
+      },
+      "project": {
+        "success": 50,
+        "failed": 0
+      },
+      "sale": {
+        "success": 50,
+        "failed": 0
+      },
+      "followUp": {
+        "success": 50,
+        "failed": 0
+      }
+    }
   },
   {
-    "id": "job-xtzjiulkz6",
+    "id": "job-jcbecjhuze",
+    "templateId": "tmpl-mtbajpufra",
+    "locales": [
+      "en",
+      "nb"
+    ],
+    "requestedCounts": {
+      "company": 10,
+      "contact": 15,
+      "followUp": 5,
+      "project": 4,
+      "sale": 4
+    },
+    "apiMode": "entity",
+    "status": "succeeded",
+    "createdBy": "operator",
+    "createdAt": "2026-03-14T15:50:47.719Z",
+    "metrics": {
+      "total": 290,
+      "success": 290,
+      "failed": 0,
+      "durationSeconds": 48
+    },
+    "items": [],
+    "completedAt": "2026-03-14T15:51:35.878Z",
+    "phases": {
+      "company": {
+        "success": 10,
+        "failed": 0
+      },
+      "contact": {
+        "success": 150,
+        "failed": 0
+      },
+      "project": {
+        "success": 40,
+        "failed": 0
+      },
+      "sale": {
+        "success": 40,
+        "failed": 0
+      },
+      "followUp": {
+        "success": 50,
+        "failed": 0
+      }
+    }
+  },
+  {
+    "id": "job-jeqwjrjvwa",
     "templateId": "tmpl-onboarding",
-    "environmentId": "env-sandbox",
+    "locales": [
+      "en",
+      "nb"
+    ],
+    "requestedCounts": {
+      "company": 10,
+      "contact": 10,
+      "followUp": 5,
+      "project": 5,
+      "sale": 5
+    },
+    "apiMode": "massops",
+    "status": "succeeded",
+    "createdBy": "operator",
+    "createdAt": "2026-03-14T15:50:24.669Z",
+    "metrics": {
+      "total": 160,
+      "success": 160,
+      "failed": 0,
+      "durationSeconds": 3
+    },
+    "items": [],
+    "completedAt": "2026-03-14T15:50:29.713Z",
+    "phases": {
+      "company": {
+        "success": 10,
+        "failed": 0
+      },
+      "contact": {
+        "success": 100,
+        "failed": 0
+      },
+      "followUp": {
+        "success": 50,
+        "failed": 0
+      }
+    }
+  },
+  {
+    "id": "job-jcaumndx0p",
+    "templateId": "tmpl-onboarding",
     "locales": [
       "en",
       "nb"
@@ -40,153 +240,31 @@
       "contact": 15,
       "followUp": 5
     },
-    "apiMode": "massops",
-    "status": "failed",
-    "createdBy": "operator",
-    "createdAt": "2026-03-14T10:19:42.772Z",
-    "metrics": {
-      "total": 10,
-      "success": 0,
-      "failed": 10,
-      "durationSeconds": 3
-    },
-    "items": [],
-    "completedAt": "2026-03-14T10:19:46.891Z"
-  },
-  {
-    "id": "job-qxd5lnfkry",
-    "templateId": "tmpl-onboarding",
-    "environmentId": "env-sandbox",
-    "locales": [
-      "en",
-      "nb"
-    ],
-    "requestedCounts": {
-      "company": 10,
-      "contact": 15,
-      "followUp": 5,
-      "project": 2,
-      "sale": 2
-    },
-    "apiMode": "massops",
+    "apiMode": "entity",
     "status": "succeeded",
     "createdBy": "operator",
-    "createdAt": "2026-03-14T10:15:08.306Z",
+    "createdAt": "2026-03-14T15:42:29.718Z",
     "metrics": {
-      "total": 0,
-      "success": 0,
+      "total": 30,
+      "success": 30,
       "failed": 0,
-      "durationSeconds": 0
+      "durationSeconds": 6
     },
     "items": [],
-    "completedAt": "2026-03-14T10:15:09.171Z"
-  },
-  {
-    "id": "job-qeuka1najb",
-    "templateId": "tmpl-mtbajpufra",
-    "environmentId": "env-a9meru50bn",
-    "locales": [
-      "en",
-      "nb"
-    ],
-    "requestedCounts": {
-      "company": 10,
-      "contact": 15,
-      "followUp": 5,
-      "project": 2,
-      "sale": 2
-    },
-    "apiMode": "massops",
-    "status": "succeeded",
-    "createdBy": "operator",
-    "createdAt": "2026-03-14T10:11:58.141Z",
-    "metrics": {
-      "total": 0,
-      "success": 0,
-      "failed": 0,
-      "durationSeconds": 0
-    },
-    "items": [],
-    "completedAt": "2026-03-14T10:11:59.458Z"
-  },
-  {
-    "id": "job-uh8cdr6vyc",
-    "templateId": "tmpl-onboarding",
-    "environmentId": "env-sandbox",
-    "locales": [
-      "en",
-      "nb"
-    ],
-    "requestedCounts": {
-      "company": 10,
-      "contact": 15,
-      "followUp": 5,
-      "project": 2,
-      "sale": 2
-    },
-    "apiMode": "massops",
-    "status": "failed",
-    "createdBy": "operator",
-    "createdAt": "2026-03-14T09:47:12.614Z",
-    "metrics": {
-      "total": 10,
-      "success": 0,
-      "failed": 10,
-      "durationSeconds": 5
-    },
-    "items": [],
-    "completedAt": "2026-03-14T09:47:19.543Z"
-  },
-  {
-    "id": "job-omiqz5q9oo",
-    "templateId": "tmpl-mtbajpufra",
-    "environmentId": "env-a9meru50bn",
-    "locales": [
-      "en"
-    ],
-    "requestedCounts": {
-      "company": 10,
-      "contact": 15,
-      "followUp": 5,
-      "project": 2,
-      "sale": 2
-    },
-    "status": "succeeded",
-    "createdBy": "operator",
-    "createdAt": "2026-03-14T09:28:58.619Z",
-    "metrics": {
-      "total": 34,
-      "success": 34,
-      "failed": 0,
-      "durationSeconds": 29
-    },
-    "items": [],
-    "completedAt": "2026-03-14T09:29:28.990Z"
-  },
-  {
-    "id": "job-8o2blwmytr",
-    "templateId": "tmpl-mtbajpufra",
-    "environmentId": "env-a9meru50bn",
-    "locales": [
-      "en"
-    ],
-    "requestedCounts": {
-      "company": 10,
-      "contact": 15,
-      "followUp": 5,
-      "project": 2,
-      "sale": 2
-    },
-    "status": "failed",
-    "createdBy": "operator",
-    "createdAt": "2026-03-14T09:12:39.473Z",
-    "metrics": {
-      "total": 10,
-      "success": 0,
-      "failed": 10,
-      "durationSeconds": 18
-    },
-    "items": [],
-    "completedAt": "2026-03-14T09:13:02.356Z"
+    "completedAt": "2026-03-14T15:42:37.020Z",
+    "phases": {
+      "company": {
+        "success": 10,
+        "failed": 0
+      },
+      "contact": {
+        "success": 15,
+        "failed": 0
+      },
+      "followUp": {
+        "success": 5,
+        "failed": 0
+      }
+    }
   }
 ]

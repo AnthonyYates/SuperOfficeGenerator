@@ -1,9 +1,16 @@
+import Link from "next/link";
 import { TemplateForm } from "@/components/forms/template-form";
 import { listTemplates } from "@/lib/services";
 import { deleteTemplateAction } from "@/app/actions";
 
-export default async function TemplatesPage() {
+export default async function TemplatesPage({
+  searchParams
+}: {
+  searchParams?: Record<string, string>;
+}) {
   const templates = await listTemplates();
+  const editId = searchParams?.edit ?? null;
+  const editTemplate = editId ? (templates.find((t) => t.id === editId) ?? null) : null;
 
   return (
     <div className="space-y-6">
@@ -17,7 +24,7 @@ export default async function TemplatesPage() {
       </header>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <TemplateForm />
+        <TemplateForm key={editTemplate?.id ?? "new"} template={editTemplate ?? undefined} />
         <div className="card space-y-4">
           <h3 className="text-lg font-semibold text-slate-900">Existing templates</h3>
           <div className="space-y-4 text-sm text-slate-600">
@@ -32,6 +39,12 @@ export default async function TemplatesPage() {
                     <span className="pill border-brand bg-brand/10 text-brand">
                       {template.entities.length} entity types
                     </span>
+                    <Link
+                      href={`/templates?edit=${template.id}`}
+                      className="rounded-lg border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs text-sky-700 hover:bg-sky-100"
+                    >
+                      Edit
+                    </Link>
                     <form action={deleteTemplateAction}>
                       <input type="hidden" name="id" value={template.id} />
                       <button

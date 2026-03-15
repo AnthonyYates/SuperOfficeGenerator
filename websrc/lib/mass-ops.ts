@@ -1,6 +1,6 @@
 import "server-only";
 
-import { SaleStatus, UpsertNomatchAction } from "@superoffice/webapi";
+import { SaleStatus, type ProjectMember, type ParticipantInfo } from "@superoffice/webapi";
 import { buildFaker, runFakerPath } from "./faker";
 import { getMetadata } from "./metadata";
 import {
@@ -28,7 +28,7 @@ import type {
 } from "./types";
 
 const CONCURRENCY = 5;   // simultaneous API calls for entity-agent mode
-const BATCH_SIZE = 500;  // rows per upsertAsync call for mass-ops mode
+const BATCH_SIZE = 500;  // rows per insertAsync call for mass-ops mode
 
 /** Extract tenant context ID from webApiUrl, e.g. "https://sod.superoffice.com/Cust26759/api/" → "Cust26759" */
 function extractContextFromWebApiUrl(webApiUrl: string): string {
@@ -84,14 +84,21 @@ async function* executeWithEntityAgents(
     const settings = template.entities.find((e) => e.entityType === entityType);
     if (!settings) continue;
 
-    const quantity = manifest.requestedCounts[entityType] ?? settings.quantityDefault;
+    const companyIds = insertedIds.get("company") ?? [];
+    const personIds = insertedIds.get("contact") ?? [];
+    const projectIds = insertedIds.get("project") ?? [];
+    const saleIds = insertedIds.get("sale") ?? [];
+
+    // Counts are per-company for all dependent entity types.
+    const baseQuantity = manifest.requestedCounts[entityType] ?? settings.quantityDefault;
+    const companyCount = companyIds.length;
+    const quantity = entityType === "company" || companyCount === 0
+      ? baseQuantity
+      : baseQuantity * companyCount;
     if (quantity <= 0) continue;
 
     yield { type: "phase_start", entityType, total: quantity };
 
-    const companyIds = insertedIds.get("company") ?? [];
-    const personIds = insertedIds.get("contact") ?? [];
-    const projectIds = insertedIds.get("project") ?? [];
     const phaseIds: number[] = [];
     let batchIndex = 0;
 
@@ -151,7 +158,29 @@ async function* executeWithEntityAgents(
             if (pType) entity.projectType = { id: pType.id };
             if (pStatus) entity.projectStatus = { id: pStatus.id };
             const saved = await agent.saveProjectEntityAsync(entity);
-            return saved.projectId!;
+            const projectId = saved.projectId!;
+
+            // Add project members: persons that belong to the same company as this project
+            if (companyIds.length > 0 && personIds.length > 0) {
+              const companyCount = companyIds.length;
+              const projectCompanyIdx = i % companyCount;
+              const projectContactId = companyIds[projectCompanyIdx];
+              const members: ProjectMember[] = [];
+              for (let j = 0; j < personIds.length; j++) {
+                if (j % companyCount === projectCompanyIdx && personIds[j]) {
+                  members.push({ personId: personIds[j], contactId: projectContactId, projectId });
+                }
+              }
+              if (members.length) {
+                try {
+                  await agent.addProjectMembersAsync(projectId, members);
+                } catch {
+                  // Non-fatal: project was saved, members just couldn't be linked
+                }
+              }
+            }
+
+            return projectId;
           }
 
           if (entityType === "followUp") {
@@ -164,7 +193,16 @@ async function* executeWithEntityAgents(
             if (desc) entity.description = desc;
             entity.contact = { contactId };
             const personId = pickRoundRobin(personIds, i);
-            if (personId) entity.person = { personId };
+            if (personId) {
+              entity.person = { personId };
+              // Add the contact person as a participant (creates a booking invitation slave row)
+              const participant: ParticipantInfo = { personId, contactId };
+              entity.participants = [participant];
+            }
+            const saleId = pickRoundRobin(saleIds, i);
+            if (saleId) entity.sale = { saleId };
+            const projectId = pickRoundRobin(projectIds, i);
+            if (projectId) entity.project = { projectId };
             entity.startDate = new Date();
             entity.endDate = new Date(Date.now() + 60 * 60 * 1000);
             const saved = await agent.saveAppointmentEntityAsync(entity);
@@ -228,7 +266,7 @@ async function* executeWithEntityAgents(
 }
 
 // ─── Mass-operations execution path ──────────────────────────────────────────
-// Uses DatabaseTableAgent.upsertAsync for bulk inserts.
+// Uses DatabaseTableAgent.insertAsync for bulk inserts.
 // Requires the authenticated user to have DatabaseTable / System Design access.
 
 function generateSingleRow(
@@ -283,23 +321,25 @@ async function insertSecondaryRows(
   rowObjects: Record<string, string>[],
   parentIds: number[],
   metadata: ReturnType<typeof getMetadata> extends Promise<infer T> ? T : never,
-  insertedIds: Map<string, number[]>
+  insertedIds: Map<string, number[]>,
+  rowIndexOffset = 0
 ): Promise<void> {
   for (const config of secondaryConfigs) {
     const allData: string[][] = [];
     for (let i = 0; i < rowObjects.length; i++) {
       const parentId = parentIds[i];
       if (!parentId) continue;
-      const ctx: InsertContext = { insertedIds, metadata, rowIndex: i };
+      const ctx: InsertContext = { insertedIds, metadata, rowIndex: rowIndexOffset + i };
       allData.push(...config.buildRows(rowObjects[i], parentId, ctx));
     }
     if (!allData.length) continue;
 
     for (let i = 0; i < allData.length; i += BATCH_SIZE) {
       try {
-        await agent.upsertAsync(
-          config.table, config.columns, [], allData.slice(i, i + BATCH_SIZE),
-          UpsertNomatchAction.NoChange, false
+        await agent.insertAsync(
+          config.table,
+          config.columns,
+          allData.slice(i, i + BATCH_SIZE)
         );
       } catch {
         // Secondary table failures are non-fatal
@@ -336,7 +376,13 @@ async function* executeWithMassOps(
     const settings = template.entities.find((e) => e.entityType === entityType);
     if (!settings) continue;
 
-    const quantity = manifest.requestedCounts[entityType] ?? settings.quantityDefault;
+    // Counts are per-company for all dependent entity types.
+    const companyIds = insertedIds.get("company") ?? [];
+    const baseQuantity = manifest.requestedCounts[entityType] ?? settings.quantityDefault;
+    const companyCount = companyIds.length;
+    const quantity = entityType === "company" || companyCount === 0
+      ? baseQuantity
+      : baseQuantity * companyCount;
     if (quantity <= 0) continue;
 
     const schema = ENTITY_SCHEMAS[entityType];
@@ -358,12 +404,9 @@ async function* executeWithMassOps(
       const batchIndex = Math.floor(batchStart / BATCH_SIZE);
 
       try {
-        console.log(`[mass-ops] upsertAsync — table: ${schema.table}, columns: ${JSON.stringify(schema.columns)}`);
+        console.log(`[mass-ops] insertAsync — table: ${schema.table}, columns: ${JSON.stringify(schema.columns)}`);
         console.log(`[mass-ops] first row sample:`, JSON.stringify(batchRows[0]));
-        const result = await agent.upsertAsync(
-          schema.table, schema.columns, [], batchRows,
-          UpsertNomatchAction.NoChange, true
-        );
+        const result = await agent.insertAsync(schema.table, schema.columns, batchRows);
 
         const ids = (result.rowStatus ?? [])
           .map((r) => r.primaryKey)
@@ -373,11 +416,11 @@ async function* executeWithMassOps(
         yield { type: "batch_done", entityType, batchIndex, inserted: ids.length };
 
         if (schema.secondaryTables?.length) {
-          await insertSecondaryRows(agent, schema.secondaryTables, batchObjects, ids, metadata, insertedIds);
+          await insertSecondaryRows(agent, schema.secondaryTables, batchObjects, ids, metadata, insertedIds, batchStart);
         }
       } catch (err) {
         const detail = (err as { response?: { data?: unknown } }).response?.data
-          ? JSON.stringify((err as { response: { data: unknown } }).response.data).slice(0, 300)
+          ? JSON.stringify((err as { response: { data: unknown } }).response.data)
           : (err as Error).message;
         yield { type: "error", message: `${entityType} batch ${batchIndex}: ${detail}` };
       }

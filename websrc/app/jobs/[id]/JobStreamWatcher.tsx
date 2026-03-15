@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useReducer } from "react";
-import type { JobPhaseEvent, JobStatus, JobMetricSummary } from "@/lib/types";
+import { useEffect, useRef, useReducer, useState } from "react";
+import type { JobPhaseEvent, JobPhaseResult, JobStatus, JobMetricSummary } from "@/lib/types";
 
 interface PhaseState {
   entityType: string;
@@ -80,13 +80,55 @@ const ENTITY_LABELS: Record<string, string> = {
 interface Props {
   jobId: string;
   initialStatus: string;
+  initialMetrics: JobMetricSummary;
+  initialPhases?: Record<string, JobPhaseResult>;
 }
 
-export function JobStreamWatcher({ jobId, initialStatus }: Props) {
+export function JobStreamWatcher({ jobId, initialStatus, initialMetrics, initialPhases }: Props) {
+  const isTerminal = initialStatus === "succeeded" || initialStatus === "failed";
+
   const [state, dispatch] = useReducer(reducer, {
-    phases: {},
-    errors: []
+    phases: isTerminal && initialPhases
+      ? Object.fromEntries(
+          Object.entries(initialPhases).map(([entityType, result]) => [
+            entityType,
+            { entityType, total: result.success + result.failed, inserted: result.success, success: result.success, failed: result.failed, done: true }
+          ])
+        )
+      : {},
+    errors: [],
+    finalStatus: isTerminal ? (initialStatus as JobStatus) : undefined,
+    finalMetrics: isTerminal ? initialMetrics : undefined
   });
+
+  // Elapsed-seconds counter while running
+  const startRef = useRef<number>(Date.now());
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (isTerminal) return;
+    startRef.current = Date.now();
+    const iv = setInterval(() => {
+      setElapsed(Math.round((Date.now() - startRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(iv);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId]);
+
+  // Derive live totals from phases
+  const phaseList = Object.values(state.phases);
+  const liveSuccess = state.finalMetrics
+    ? state.finalMetrics.success
+    : phaseList.reduce((s, p) => s + (p.success ?? p.inserted), 0);
+  const liveFailed = state.finalMetrics
+    ? state.finalMetrics.failed
+    : phaseList.reduce((s, p) => s + (p.failed ?? 0), 0);
+  const liveTotal = state.finalMetrics
+    ? state.finalMetrics.total
+    : phaseList.reduce((s, p) => s + p.total, 0);
+  const liveDuration = state.finalMetrics
+    ? `${state.finalMetrics.durationSeconds}s`
+    : phaseList.length > 0 ? `${elapsed}s` : `${initialMetrics.durationSeconds}s`;
 
   useEffect(() => {
     // Only open stream if the job needs to run
@@ -120,6 +162,26 @@ export function JobStreamWatcher({ jobId, initialStatus }: Props) {
   return (
     <section className="card space-y-4">
       <h3 className="text-lg font-semibold text-slate-900">Live progress</h3>
+
+      {/* Live metrics row */}
+      <dl className="grid grid-cols-4 gap-3 text-sm">
+        <div className="rounded-xl bg-slate-50 px-3 py-2">
+          <dt className="text-xs text-slate-500">Total</dt>
+          <dd className="font-semibold text-slate-900">{liveTotal}</dd>
+        </div>
+        <div className="rounded-xl bg-slate-50 px-3 py-2">
+          <dt className="text-xs text-slate-500">Success</dt>
+          <dd className="font-semibold text-emerald-600">{liveSuccess}</dd>
+        </div>
+        <div className="rounded-xl bg-slate-50 px-3 py-2">
+          <dt className="text-xs text-slate-500">Failed</dt>
+          <dd className="font-semibold text-rose-600">{liveFailed}</dd>
+        </div>
+        <div className="rounded-xl bg-slate-50 px-3 py-2">
+          <dt className="text-xs text-slate-500">Duration</dt>
+          <dd className="font-semibold text-slate-900">{liveDuration}</dd>
+        </div>
+      </dl>
 
       {phases.map((phase) => {
         const pct = phase.total > 0 ? Math.round((phase.inserted / phase.total) * 100) : 0;
