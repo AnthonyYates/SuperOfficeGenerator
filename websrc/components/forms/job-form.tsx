@@ -1,10 +1,16 @@
 "use client";
 
 import { useFormState } from "react-dom";
+import { useState, useMemo } from "react";
 import type { TemplateDefinition } from "@/lib/types";
 import { createJobAction } from "@/app/actions";
 
 const initialState = { error: null as null | string | Record<string, string[]>, success: false };
+
+function countsFromTemplate(template: TemplateDefinition | undefined): Record<string, string> {
+  if (!template) return {};
+  return Object.fromEntries(template.entities.map((e) => [e.name, String(e.quantityDefault)]));
+}
 
 interface JobFormProps {
   templates: TemplateDefinition[];
@@ -15,6 +21,28 @@ export function JobForm({ templates }: JobFormProps) {
 
   const firstTemplate = templates[0];
   const isDisabled = !templates.length;
+
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(firstTemplate?.id ?? "");
+  const [counts, setCounts] = useState<Record<string, string>>(() => countsFromTemplate(firstTemplate));
+
+  const selectedTemplate = useMemo(
+    () => templates.find((t) => t.id === selectedTemplateId),
+    [templates, selectedTemplateId]
+  );
+
+  function handleTemplateChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const id = e.target.value;
+    setSelectedTemplateId(id);
+    setCounts(countsFromTemplate(templates.find((t) => t.id === id)));
+  }
+
+  const countsJson = JSON.stringify(
+    Object.fromEntries(
+      Object.entries(counts)
+        .filter(([, v]) => v !== "")
+        .map(([k, v]) => [k, Number(v)])
+    )
+  );
 
   return (
     <form action={formAction} className="card space-y-4">
@@ -29,6 +57,8 @@ export function JobForm({ templates }: JobFormProps) {
           Template
           <select
             name="templateId"
+            value={selectedTemplateId}
+            onChange={handleTemplateChange}
             disabled={isDisabled}
             className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-brand focus:outline-none"
           >
@@ -93,22 +123,27 @@ export function JobForm({ templates }: JobFormProps) {
             — company is the total; all others are <strong>per company</strong>
           </span>
         </p>
-        <div className="grid gap-4 sm:grid-cols-3">
-          {(["company", "contact", "followUp", "project", "sale"] as const).map((key) => (
-            <label key={key} className="text-sm font-medium text-slate-700">
-              {key}{key !== "company" ? " / co." : ""}
-              <input
-                name={`${key}Count`}
-                type="number"
-                min={1}
-                disabled={isDisabled}
-                defaultValue={firstTemplate?.entities.find((e) => e.entityType === key)?.quantityDefault ?? ""}
-                placeholder="skip"
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-brand focus:outline-none"
-              />
-            </label>
-          ))}
-        </div>
+        {selectedTemplate && selectedTemplate.entities.length > 0 ? (
+          <div className="grid gap-4 sm:grid-cols-3">
+            {selectedTemplate.entities.map((entity) => (
+              <label key={entity.name} className="text-sm font-medium text-slate-700">
+                {entity.name}{entity.name !== "company" ? " / co." : ""}
+                <input
+                  type="number"
+                  min={1}
+                  disabled={isDisabled}
+                  value={counts[entity.name] ?? ""}
+                  onChange={(e) => setCounts((prev) => ({ ...prev, [entity.name]: e.target.value }))}
+                  placeholder="skip"
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-brand focus:outline-none"
+                />
+              </label>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400">Select a template to configure counts.</p>
+        )}
+        <input type="hidden" name="countsJson" value={countsJson} />
       </div>
       {state.error && (
         <p className="text-sm text-rose-600">

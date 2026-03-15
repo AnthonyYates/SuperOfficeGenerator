@@ -131,6 +131,22 @@ export async function deleteTemplate(id: string): Promise<void> {
   await writeTemplates(templates.filter((t) => t.id !== id));
 }
 
+export async function duplicateTemplate(id: string): Promise<TemplateDefinition> {
+  const templates = await readTemplates();
+  const original = templates.find((t) => t.id === id);
+  if (!original) throw new Error("Template not found");
+  const copy: TemplateDefinition = {
+    ...original,
+    id: newId("tmpl"),
+    name: `${original.name} (copy)`,
+    createdBy: "operator",
+    updatedAt: new Date().toISOString()
+  };
+  templates.push(copy);
+  await writeTemplates(templates);
+  return copy;
+}
+
 export async function summarizeDashboard() {
   const [templates, jobs] = await Promise.all([
     readTemplates(),

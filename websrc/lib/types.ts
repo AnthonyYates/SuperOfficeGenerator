@@ -1,28 +1,82 @@
 export type LocaleCode = string;
 
+export type BuiltinEntityType = "company" | "contact" | "followUp" | "project" | "sale";
+
+// ---------------------------------------------------------------------------
+// Field rules
+// ---------------------------------------------------------------------------
+
 export interface TemplateFieldRule {
   field: string;
-  strategy: "static" | "faker" | "list" | "sequence";
-  value?: string;
+  strategy: "static" | "faker" | "list" | "sequence" | "fk";
+  // faker
   fakerPath?: string;
+  // static
+  value?: string;
+  // list
   list?: string[];
+  // fk — resolved from another entity that ran before this one
+  fkEntity?: string;              // references EntityDefinition.name within the same template
+  fkSelect?: "round-robin" | "random";
 }
 
+// ---------------------------------------------------------------------------
+// Secondary table — populated once per row of the owning entity
+// ---------------------------------------------------------------------------
+
+export interface SecondaryTableDef {
+  tableName: string;
+  primaryKey: string;
+  parentFkColumn: string;   // column in THIS table that stores the parent row's PK
+  fields: TemplateFieldRule[];
+}
+
+// ---------------------------------------------------------------------------
+// Entity definition (v2 schema)
+// ---------------------------------------------------------------------------
+
+export interface EntityDefinition {
+  name: string;                    // unique within the template; used for FK references
+  builtinType?: BuiltinEntityType; // if set, tableName/PK resolved from ENTITY_SCHEMAS
+  tableName?: string;              // required when builtinType is absent
+  primaryKey?: string;             // required when builtinType is absent
+  quantityDefault: number;
+  localeFallbacks: LocaleCode[];
+  dependsOn?: string[];            // entity names that must execute first (drives topo sort)
+  fields: TemplateFieldRule[];
+  secondaryTables?: SecondaryTableDef[];
+}
+
+// ---------------------------------------------------------------------------
+// Legacy type — v1 templates stored before the EntityDefinition redesign.
+// Kept for backwards-compatible normalisation in storage.ts only.
+// ---------------------------------------------------------------------------
+
 export interface TemplateEntitySettings {
-  entityType: "company" | "contact" | "followUp" | "project" | "sale";
+  entityType: BuiltinEntityType;
   quantityDefault: number;
   localeFallbacks: LocaleCode[];
   fields: TemplateFieldRule[];
 }
 
+// ---------------------------------------------------------------------------
+// Template
+// ---------------------------------------------------------------------------
+
 export interface TemplateDefinition {
   id: string;
   name: string;
   description: string;
-  entities: TemplateEntitySettings[];
+  entities: EntityDefinition[];
+  /** 1 = legacy TemplateEntitySettings[], 2 = EntityDefinition[] */
+  schemaVersion: number;
   createdBy: string;
   updatedAt: string;
 }
+
+// ---------------------------------------------------------------------------
+// Job
+// ---------------------------------------------------------------------------
 
 export type JobStatus = "queued" | "running" | "succeeded" | "failed";
 
@@ -35,10 +89,10 @@ export interface JobMetricSummary {
 
 export interface JobItemLog {
   id: string;
-  entityType: TemplateEntitySettings["entityType"];
+  entityType: string;    // entity name — may be a builtin type or any custom name
   payload: Record<string, unknown>;
   status: "success" | "failed";
-  superOfficeId?: string;
+  superOfficeId?: number;
   errorMessage?: string;
 }
 
@@ -79,4 +133,3 @@ declare module "next-auth" {
     webApiUrl: string;
   }
 }
-

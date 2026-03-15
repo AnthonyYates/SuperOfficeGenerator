@@ -1,7 +1,7 @@
 import "server-only";
 
 import { SaleStatus, type ProjectMember, type ParticipantInfo } from "@superoffice/webapi";
-import { buildFaker, runFakerPath } from "./faker";
+import { buildFaker, runFakerPath, resolveLocale } from "./faker";
 import { getMetadata } from "./metadata";
 import {
   createContactAgent,
@@ -14,16 +14,16 @@ import {
 } from "./superoffice-client";
 import { getSystemUserTicket, extractEnv } from "./system-user";
 import {
-  ENTITY_SCHEMAS,
-  ENTITY_EXECUTION_ORDER,
+  resolveSchema,
+  topoSort,
   type EntitySchema,
   type InsertContext,
   type SecondaryTableConfig
 } from "./entity-schema";
 import type {
+  EntityDefinition,
   JobManifest,
   TemplateDefinition,
-  TemplateEntitySettings,
   JobPhaseEvent
 } from "./types";
 
@@ -47,11 +47,12 @@ function pickRoundRobin<T>(arr: T[], idx: number): T | undefined {
 }
 
 function getFieldValue(
-  settings: TemplateEntitySettings,
+  entity: EntityDefinition,
   fieldName: string,
-  fakerInstance: ReturnType<typeof buildFaker>
+  fakerInstance: ReturnType<typeof buildFaker>,
+  ctx: InsertContext
 ): string | undefined {
-  const rule = settings.fields.find((f) => f.field === fieldName);
+  const rule = entity.fields.find((f) => f.field === fieldName);
   if (!rule) return undefined;
   switch (rule.strategy) {
     case "static":
@@ -62,6 +63,16 @@ function getFieldValue(
       return rule.list?.[Math.floor(Math.random() * (rule.list.length || 1))] ?? "";
     case "sequence":
       return fakerInstance.string.alphanumeric(8).toUpperCase();
+    case "fk": {
+      if (!rule.fkEntity) return "0";
+      const ids = ctx.insertedIds.get(rule.fkEntity) ?? [];
+      if (!ids.length) return "0";
+      if (rule.fkSelect === "random") {
+        return String(ids[Math.floor(Math.random() * ids.length)]);
+      }
+      // default: round-robin
+      return String(ids[ctx.rowIndex % ids.length]);
+    }
     default:
       return "";
   }
@@ -78,11 +89,17 @@ async function* executeWithEntityAgents(
 ): AsyncGenerator<JobPhaseEvent> {
   const metadata = await getMetadata(webApiUrl, accessToken);
   const insertedIds = new Map<string, number[]>();
-  const locale = manifest.locales[0] ?? "en";
+  const sortedEntities = topoSort(template.entities);
 
-  for (const entityType of ENTITY_EXECUTION_ORDER) {
-    const settings = template.entities.find((e) => e.entityType === entityType);
-    if (!settings) continue;
+  for (const entityDef of sortedEntities) {
+    // Entity-agent path only supports builtin types
+    if (!entityDef.builtinType) {
+      yield { type: "error", message: `Skipping custom entity "${entityDef.name}" — entity-agent mode only supports builtin types` };
+      continue;
+    }
+    const entityType = entityDef.builtinType;
+
+    const locale = resolveLocale(manifest.locales, entityDef.localeFallbacks);
 
     const companyIds = insertedIds.get("company") ?? [];
     const personIds = insertedIds.get("contact") ?? [];
@@ -90,14 +107,14 @@ async function* executeWithEntityAgents(
     const saleIds = insertedIds.get("sale") ?? [];
 
     // Counts are per-company for all dependent entity types.
-    const baseQuantity = manifest.requestedCounts[entityType] ?? settings.quantityDefault;
+    const baseQuantity = manifest.requestedCounts[entityDef.name] ?? entityDef.quantityDefault;
     const companyCount = companyIds.length;
     const quantity = entityType === "company" || companyCount === 0
       ? baseQuantity
       : baseQuantity * companyCount;
     if (quantity <= 0) continue;
 
-    yield { type: "phase_start", entityType, total: quantity };
+    yield { type: "phase_start", entityType: entityDef.name, total: quantity };
 
     const phaseIds: number[] = [];
     let batchIndex = 0;
@@ -109,7 +126,8 @@ async function* executeWithEntityAgents(
       const settled = await Promise.allSettled(
         indices.map(async (i) => {
           const f = buildFaker(locale);
-          const field = (name: string) => getFieldValue(settings, name, f);
+          const ctx: InsertContext = { insertedIds, metadata, rowIndex: i, locale };
+          const field = (name: string) => getFieldValue(entityDef, name, f, ctx);
 
           if (entityType === "company") {
             const agent = createContactAgent(webApiUrl, accessToken);
@@ -162,12 +180,11 @@ async function* executeWithEntityAgents(
 
             // Add project members: persons that belong to the same company as this project
             if (companyIds.length > 0 && personIds.length > 0) {
-              const companyCount = companyIds.length;
-              const projectCompanyIdx = i % companyCount;
+              const projectCompanyIdx = i % companyIds.length;
               const projectContactId = companyIds[projectCompanyIdx];
               const members: ProjectMember[] = [];
               for (let j = 0; j < personIds.length; j++) {
-                if (j % companyCount === projectCompanyIdx && personIds[j]) {
+                if (j % companyIds.length === projectCompanyIdx && personIds[j]) {
                   members.push({ personId: personIds[j], contactId: projectContactId, projectId });
                 }
               }
@@ -175,7 +192,7 @@ async function* executeWithEntityAgents(
                 try {
                   await agent.addProjectMembersAsync(projectId, members);
                 } catch {
-                  // Non-fatal: project was saved, members just couldn't be linked
+                  // Non-fatal
                 }
               }
             }
@@ -195,7 +212,6 @@ async function* executeWithEntityAgents(
             const personId = pickRoundRobin(personIds, i);
             if (personId) {
               entity.person = { personId };
-              // Add the contact person as a participant (creates a booking invitation slave row)
               const participant: ParticipantInfo = { personId, contactId };
               entity.participants = [participant];
             }
@@ -234,7 +250,7 @@ async function* executeWithEntityAgents(
             return saved.saleId!;
           }
 
-          throw new Error(`Unknown entity type: ${entityType}`);
+          throw new Error(`Unknown builtin entity type: ${entityType}`);
         })
       );
 
@@ -246,17 +262,21 @@ async function* executeWithEntityAgents(
         } else {
           yield {
             type: "error",
-            message: `${entityType} [${batchIndex}]: ${(result.reason as Error).message}`
+            message: `${entityDef.name} [${batchIndex}]: ${(result.reason as Error).message}`
           };
         }
       }
 
-      yield { type: "batch_done", entityType, batchIndex, inserted: batchInserted };
+      yield { type: "batch_done", entityType: entityDef.name, batchIndex, inserted: batchInserted };
       batchIndex++;
     }
 
-    insertedIds.set(entityType, phaseIds);
-    yield { type: "phase_done", entityType, success: phaseIds.length, failed: quantity - phaseIds.length };
+    // Store under entity name for FK references, and also under builtinType for system column lookups
+    insertedIds.set(entityDef.name, phaseIds);
+    if (entityDef.builtinType && entityDef.builtinType !== entityDef.name) {
+      insertedIds.set(entityDef.builtinType, phaseIds);
+    }
+    yield { type: "phase_done", entityType: entityDef.name, success: phaseIds.length, failed: quantity - phaseIds.length };
 
     if (entityType === "company" && phaseIds.length === 0) {
       yield { type: "error", message: "Company phase produced 0 IDs — skipping dependent entity phases" };
@@ -270,15 +290,14 @@ async function* executeWithEntityAgents(
 // Requires the authenticated user to have DatabaseTable / System Design access.
 
 function generateSingleRow(
-  settings: TemplateEntitySettings,
+  entity: EntityDefinition,
   schema: EntitySchema,
-  ctx: InsertContext,
-  locale: string
+  ctx: InsertContext
 ): Record<string, string> {
-  const f = buildFaker(locale);
+  const f = buildFaker(ctx.locale);
   const row: Record<string, string> = {};
 
-  for (const fieldRule of settings.fields) {
+  for (const fieldRule of entity.fields) {
     let value: unknown;
     switch (fieldRule.strategy) {
       case "static":
@@ -294,6 +313,15 @@ function generateSingleRow(
       case "sequence":
         value = f.string.alphanumeric(8).toUpperCase();
         break;
+      case "fk": {
+        if (!fieldRule.fkEntity) { value = "0"; break; }
+        const ids = ctx.insertedIds.get(fieldRule.fkEntity) ?? [];
+        if (!ids.length) { value = "0"; break; }
+        value = fieldRule.fkSelect === "random"
+          ? ids[Math.floor(Math.random() * ids.length)]
+          : ids[ctx.rowIndex % ids.length];
+        break;
+      }
       default:
         value = "";
     }
@@ -322,6 +350,7 @@ async function insertSecondaryRows(
   parentIds: number[],
   metadata: ReturnType<typeof getMetadata> extends Promise<infer T> ? T : never,
   insertedIds: Map<string, number[]>,
+  locale: string,
   rowIndexOffset = 0
 ): Promise<void> {
   for (const config of secondaryConfigs) {
@@ -329,7 +358,7 @@ async function insertSecondaryRows(
     for (let i = 0; i < rowObjects.length; i++) {
       const parentId = parentIds[i];
       if (!parentId) continue;
-      const ctx: InsertContext = { insertedIds, metadata, rowIndex: rowIndexOffset + i };
+      const ctx: InsertContext = { insertedIds, metadata, rowIndex: rowIndexOffset + i, locale };
       allData.push(...config.buildRows(rowObjects[i], parentId, ctx));
     }
     if (!allData.length) continue;
@@ -343,6 +372,71 @@ async function insertSecondaryRows(
         );
       } catch {
         // Secondary table failures are non-fatal
+      }
+    }
+  }
+}
+
+/**
+ * Handles declarative SecondaryTableDef entries from an EntityDefinition.
+ * Generates rows for each secondary table using its own field rules,
+ * injecting the parent FK automatically.
+ */
+async function insertDeclarativeSecondaryRows(
+  agent: ReturnType<typeof createDatabaseTableAgent>,
+  entity: EntityDefinition,
+  parentIds: number[],
+  insertedIds: Map<string, number[]>,
+  metadata: ReturnType<typeof getMetadata> extends Promise<infer T> ? T : never,
+  locale: string,
+  rowIndexOffset = 0
+): Promise<void> {
+  for (const stDef of entity.secondaryTables ?? []) {
+    const columns = [stDef.primaryKey, stDef.parentFkColumn, ...stDef.fields.map((f) => f.field)];
+    const allData: string[][] = [];
+
+    for (let i = 0; i < parentIds.length; i++) {
+      const parentId = parentIds[i];
+      if (!parentId) continue;
+      const ctx: InsertContext = { insertedIds, metadata, rowIndex: rowIndexOffset + i, locale };
+      const f = buildFaker(locale);
+      const rowValues: string[] = [
+        "0",               // primary key — triggers INSERT
+        String(parentId)   // parent FK
+      ];
+      for (const fieldRule of stDef.fields) {
+        let value: unknown = "";
+        switch (fieldRule.strategy) {
+          case "static": value = fieldRule.value ?? ""; break;
+          case "faker":
+            value = fieldRule.fakerPath ? String(runFakerPath(f, fieldRule.fakerPath)) : "";
+            break;
+          case "list":
+            value = fieldRule.list?.[Math.floor(Math.random() * (fieldRule.list.length || 1))] ?? "";
+            break;
+          case "sequence": value = f.string.alphanumeric(8).toUpperCase(); break;
+          case "fk": {
+            if (!fieldRule.fkEntity) { value = "0"; break; }
+            const ids = ctx.insertedIds.get(fieldRule.fkEntity) ?? [];
+            value = ids.length
+              ? (fieldRule.fkSelect === "random"
+                ? ids[Math.floor(Math.random() * ids.length)]
+                : ids[ctx.rowIndex % ids.length])
+              : "0";
+            break;
+          }
+        }
+        rowValues.push(String(value ?? ""));
+      }
+      allData.push(rowValues);
+    }
+
+    if (!allData.length) continue;
+    for (let i = 0; i < allData.length; i += BATCH_SIZE) {
+      try {
+        await agent.insertAsync(stDef.tableName, columns, allData.slice(i, i + BATCH_SIZE));
+      } catch {
+        // Non-fatal
       }
     }
   }
@@ -371,28 +465,28 @@ async function* executeWithMassOps(
   }
   const metadata = await getMetadata(webApiUrl, accessToken);
   const insertedIds = new Map<string, number[]>();
+  const sortedEntities = topoSort(template.entities);
 
-  for (const entityType of ENTITY_EXECUTION_ORDER) {
-    const settings = template.entities.find((e) => e.entityType === entityType);
-    if (!settings) continue;
+  for (const entityDef of sortedEntities) {
+    const schema = resolveSchema(entityDef);
+    const locale = resolveLocale(manifest.locales, entityDef.localeFallbacks);
 
     // Counts are per-company for all dependent entity types.
     const companyIds = insertedIds.get("company") ?? [];
-    const baseQuantity = manifest.requestedCounts[entityType] ?? settings.quantityDefault;
+    const baseQuantity = manifest.requestedCounts[entityDef.name] ?? entityDef.quantityDefault;
     const companyCount = companyIds.length;
-    const quantity = entityType === "company" || companyCount === 0
+    const isCompany = entityDef.builtinType === "company";
+    const quantity = isCompany || companyCount === 0
       ? baseQuantity
       : baseQuantity * companyCount;
     if (quantity <= 0) continue;
 
-    const schema = ENTITY_SCHEMAS[entityType];
-    yield { type: "phase_start", entityType, total: quantity };
+    yield { type: "phase_start", entityType: entityDef.name, total: quantity };
 
-    const locale = manifest.locales[0] ?? "en";
     const rowObjects: Record<string, string>[] = [];
     for (let i = 0; i < quantity; i++) {
-      const ctx: InsertContext = { insertedIds, metadata, rowIndex: i };
-      rowObjects.push(generateSingleRow(settings, schema, ctx, locale));
+      const ctx: InsertContext = { insertedIds, metadata, rowIndex: i, locale };
+      rowObjects.push(generateSingleRow(entityDef, schema, ctx));
     }
     const allRows = rowObjects.map((r) => rowToArray(r, schema.columns));
 
@@ -413,23 +507,33 @@ async function* executeWithMassOps(
           .filter((id): id is number => typeof id === "number" && id > 0);
 
         phaseIds.push(...ids);
-        yield { type: "batch_done", entityType, batchIndex, inserted: ids.length };
+        yield { type: "batch_done", entityType: entityDef.name, batchIndex, inserted: ids.length };
 
+        // Imperative secondary tables (from EntitySchema — builtin entities)
         if (schema.secondaryTables?.length) {
-          await insertSecondaryRows(agent, schema.secondaryTables, batchObjects, ids, metadata, insertedIds, batchStart);
+          await insertSecondaryRows(agent, schema.secondaryTables, batchObjects, ids, metadata, insertedIds, locale, batchStart);
+        }
+
+        // Declarative secondary tables (from EntityDefinition — custom + template-defined)
+        if (entityDef.secondaryTables?.length) {
+          await insertDeclarativeSecondaryRows(agent, entityDef, ids, insertedIds, metadata, locale, batchStart);
         }
       } catch (err) {
         const detail = (err as { response?: { data?: unknown } }).response?.data
           ? JSON.stringify((err as { response: { data: unknown } }).response.data)
           : (err as Error).message;
-        yield { type: "error", message: `${entityType} batch ${batchIndex}: ${detail}` };
+        yield { type: "error", message: `${entityDef.name} batch ${batchIndex}: ${detail}` };
       }
     }
 
-    insertedIds.set(entityType, phaseIds);
-    yield { type: "phase_done", entityType, success: phaseIds.length, failed: quantity - phaseIds.length };
+    // Store under entity name for FK references; also under builtinType for system column lookups
+    insertedIds.set(entityDef.name, phaseIds);
+    if (entityDef.builtinType && entityDef.builtinType !== entityDef.name) {
+      insertedIds.set(entityDef.builtinType, phaseIds);
+    }
+    yield { type: "phase_done", entityType: entityDef.name, success: phaseIds.length, failed: quantity - phaseIds.length };
 
-    if (entityType === "company" && phaseIds.length === 0) {
+    if (isCompany && phaseIds.length === 0) {
       yield { type: "error", message: "Company phase produced 0 IDs — skipping dependent entity phases" };
       return;
     }

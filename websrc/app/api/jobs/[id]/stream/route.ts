@@ -12,6 +12,9 @@ export async function GET(
   if (!session?.accessToken) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
+  if (session.error === "RefreshTokenMissing" || session.error === "RefreshTokenError") {
+    return new NextResponse("Session expired — please sign in again", { status: 401 });
+  }
 
   const job = await getJob(params.id);
   if (!job) {

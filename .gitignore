@@ -75,3 +75,10 @@ websrc/.next
 websrc/.env.local
 websrc/.env.development.local
 websrc/tsconfig.tsbuildinfo
+
+# SQLite database
+websrc/storage/*.db
+websrc/storage/*.db-journal
+websrc/storage/*.db-shm
+websrc/storage/*.db-wal
+/.claude

@@ -32,7 +32,7 @@ This repository currently contains two application surfaces:
 
 ## Web Application
 
-The web application in `websrc` is a Next.js 14 App Router application that authenticates with SuperOffice, stores templates and job manifests as JSON, and executes provisioning jobs through the SuperOffice Web API.
+The web application in `websrc` is a Next.js 14 App Router application that authenticates with SuperOffice, stores templates and job manifests in a local SQLite database (Prisma), and executes provisioning jobs through the SuperOffice Web API.
 
 ![interface](assets/images/web-generator.png)
 
@@ -44,19 +44,34 @@ flowchart TD
    Login --> App[Next.js App Router]
    App --> Actions[Server Actions]
    App --> Stream[Job SSE Route]
-   Actions --> Storage[websrc/storage/*.json]
+   Actions --> DB[(SQLite via Prisma)]
    Stream --> Exec[Provisioning Executor]
    Exec --> SO[SuperOffice Web API]
 ```
 
 Key runtime characteristics:
 
-- templates and jobs are currently stored in local JSON files under `websrc/storage`
-- queued jobs are executed when the job detail page opens the SSE stream
-- provisioning supports both entity-agent mode and bulk mass-operations mode
+- templates and jobs are stored in a local SQLite database via Prisma
+- queued jobs execute when the job detail page opens the SSE stream
+- provisioning supports entity-agent mode and bulk mass-operations mode
+- entities are executed in topological order based on `dependsOn` declarations
+- custom (non-builtin) database tables are supported alongside the five builtin entity types
 
-Documentation:
+### Quick Start
 
-- [websrc/README.md](websrc/README.md)
+```bash
+cd websrc
+npm install
+npx prisma migrate dev
+npm run dev
+```
+
+Open `http://localhost:3000` and sign in with a SuperOffice account.
+
+See [websrc/README.md](websrc/README.md) for full setup, configuration, and how-to guides.
+
+### Documentation
+
+- [websrc/README.md](websrc/README.md) — setup, template configuration, and job execution guide
 - [docs/websrc-application-specification.md](docs/websrc-application-specification.md)
 - [docs/websrc-prd-gap-checklist.md](docs/websrc-prd-gap-checklist.md)

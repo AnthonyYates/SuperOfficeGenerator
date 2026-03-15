@@ -1,0 +1,37 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Template {
+  id            String   @id
+  name          String
+  description   String
+  entities      String   // JSON: EntityDefinition[]
+  schemaVersion Int      @default(1)
+  createdBy     String
+  updatedAt     DateTime
+
+  jobs          Job[]
+}
+
+model Job {
+  id              String    @id
+  templateId      String
+  locales         String    // JSON: string[]
+  requestedCounts String    // JSON: Record<string, number>
+  apiMode         String
+  status          String
+  createdBy       String
+  createdAt       DateTime
+  completedAt     DateTime?
+  metrics         String    // JSON: JobMetricSummary
+  items           String    // JSON: JobItemLog[]
+  phases          String?   // JSON: Record<string, JobPhaseResult>
+
+  template        Template  @relation(fields: [templateId], references: [id])
+}

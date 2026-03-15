@@ -5,7 +5,10 @@
       "Bash(npm install:*)",
       "Bash(npm run:*)",
       "Bash(ls -la /c/github/SuperOfficeGenerator/websrc/app/jobs/[id]/)",
-      "WebFetch(domain:docs.superoffice.com)"
+      "WebFetch(domain:docs.superoffice.com)",
+      "Bash(npx prisma:*)",
+      "Bash(npx tsc:*)",
+      "Bash(./node_modules/.bin/tsc --noEmit)"
     ]
   }
 }

@@ -3,25 +3,40 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { enqueueJob, saveTemplate, updateTemplate, deleteTemplate, deleteJob } from "@/lib/services";
+import { enqueueJob, saveTemplate, updateTemplate, deleteTemplate, deleteJob, duplicateTemplate } from "@/lib/services";
+
+const fieldRuleSchema = z.object({
+  field: z.string().min(1),
+  strategy: z.enum(["static", "faker", "list", "sequence", "fk"]),
+  value: z.string().optional(),
+  fakerPath: z.string().optional(),
+  list: z.array(z.string()).optional(),
+  fkEntity: z.string().optional(),
+  fkSelect: z.enum(["round-robin", "random"]).optional()
+});
+
+const secondaryTableSchema = z.object({
+  tableName: z.string().min(1),
+  primaryKey: z.string().min(1),
+  parentFkColumn: z.string().min(1),
+  fields: z.array(fieldRuleSchema)
+});
 
 const templateSchema = z.object({
   name: z.string().min(3),
   description: z.string().min(5),
+  schemaVersion: z.number().int().default(2),
   entities: z.array(
     z.object({
-      entityType: z.enum(["company", "contact", "followUp", "project", "sale"]),
+      name: z.string().min(1),
+      builtinType: z.enum(["company", "contact", "followUp", "project", "sale"]).optional(),
+      tableName: z.string().optional(),
+      primaryKey: z.string().optional(),
       quantityDefault: z.number().int().min(1),
       localeFallbacks: z.array(z.string().min(2)),
-      fields: z.array(
-        z.object({
-          field: z.string(),
-          strategy: z.enum(["static", "faker", "list", "sequence"]),
-          value: z.string().optional(),
-          fakerPath: z.string().optional(),
-          list: z.array(z.string()).optional()
-        })
-      )
+      dependsOn: z.array(z.string()).optional(),
+      fields: z.array(fieldRuleSchema),
+      secondaryTables: z.array(secondaryTableSchema).optional()
     })
   )
 });
@@ -102,17 +117,27 @@ export async function deleteJobAction(formData: FormData) {
   revalidatePath("/jobs");
 }
 
+export async function duplicateTemplateAction(formData: FormData) {
+  const id = formData.get("id");
+  if (typeof id === "string") {
+    await duplicateTemplate(id);
+  }
+  revalidatePath("/templates");
+}
+
 export async function createJobAction(
   _prev: { error: unknown; success: boolean },
   formData: FormData
 ) {
-  const countsEntries = ["company", "contact", "followUp", "project", "sale"]
-    .map((key) => {
-      const raw = formData.get(`${key}Count`);
-      if (!raw) return null;
-      return [key, Number(raw)] as const;
-    })
-    .filter(Boolean) as [string, number][];
+  const rawCounts = formData.get("countsJson");
+  let counts: Record<string, number> = {};
+  if (typeof rawCounts === "string" && rawCounts) {
+    try {
+      counts = JSON.parse(rawCounts) as Record<string, number>;
+    } catch {
+      // ignore — empty counts is fine
+    }
+  }
 
   const payload = jobSchema.safeParse({
     templateId: formData.get("templateId"),
@@ -120,7 +145,7 @@ export async function createJobAction(
       .split(",")
       .map((entry) => entry.trim())
       .filter(Boolean),
-    counts: Object.fromEntries(countsEntries),
+    counts,
     apiMode: formData.get("apiMode") ?? "entity"
   });
 

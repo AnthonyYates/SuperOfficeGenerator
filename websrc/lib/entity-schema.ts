@@ -1,5 +1,5 @@
 import type { CachedMetadata } from "./metadata";
-import type { TemplateEntitySettings } from "./types";
+import type { BuiltinEntityType, EntityDefinition, TemplateEntitySettings } from "./types";
 
 export type EntityType = TemplateEntitySettings["entityType"];
 
@@ -10,6 +10,8 @@ export interface InsertContext {
   metadata: CachedMetadata;
   /** Row index within the current entity phase (0-based) */
   rowIndex: number;
+  /** Resolved locale for this entity's faker generation */
+  locale: string;
 }
 
 /** Config for an additional table that must be populated per-parent-row */
@@ -94,8 +96,8 @@ const companySchema: EntitySchema = {
   },
   systemColumns: {
     contact_id: () => "0",
-    business_idx: (ctx) => String(ctx.metadata.businesses[0]?.id ?? 0),
-    category_idx: (ctx) => String(ctx.metadata.categories[0]?.id ?? 0),
+    business_idx: (ctx) => String(pickRoundRobin(ctx.metadata.businesses.map((b) => b.id), ctx.rowIndex) ?? 0),
+    category_idx: (ctx) => String(pickRoundRobin(ctx.metadata.categories.map((c) => c.id), ctx.rowIndex) ?? 0),
     country_id: (ctx) => String(ctx.metadata.countries.find((c) => c.twoLetterISOCountry === "US")?.id ?? ctx.metadata.countries[0]?.id ?? 0)
   }
 };
@@ -127,11 +129,11 @@ const personSchema: EntitySchema = {
       const companyCount = ctx.insertedIds.get("company")?.length ?? 1;
       return String(Math.floor(ctx.rowIndex / companyCount) + 1);
     },
-    // Keep person business/category/country aligned with its owning company selection.
-    // Current company generator uses deterministic defaults, so we mirror those defaults here.
+    // Mirror the owning company's round-robin business/category/country so person
+    // and company always share the same classification values for the same row index.
     country_id: (ctx) => String(ctx.metadata.countries.find((c) => c.twoLetterISOCountry === "US")?.id ?? ctx.metadata.countries[0]?.id ?? 0),
-    business_idx: (ctx) => String(ctx.metadata.businesses[0]?.id ?? 0),
-    category_idx: (ctx) => String(ctx.metadata.categories[0]?.id ?? 0)
+    business_idx: (ctx) => String(pickRoundRobin(ctx.metadata.businesses.map((b) => b.id), ctx.rowIndex) ?? 0),
+    category_idx: (ctx) => String(pickRoundRobin(ctx.metadata.categories.map((c) => c.id), ctx.rowIndex) ?? 0)
   },
   secondaryTables: [
     {
@@ -356,3 +358,81 @@ export const ENTITY_EXECUTION_ORDER: EntityType[] = [
   "sale",
   "followUp"
 ];
+
+// ---------------------------------------------------------------------------
+// Dynamic schema resolution (v2 entities)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns an EntitySchema for the given EntityDefinition.
+ * - Builtin types: returns the corresponding ENTITY_SCHEMAS entry, merging any
+ *   declarative secondaryTables from the template definition on top.
+ * - Custom types: builds a minimal EntitySchema from tableName / primaryKey / fields.
+ */
+export function resolveSchema(entity: EntityDefinition): EntitySchema {
+  if (entity.builtinType) {
+    const base = ENTITY_SCHEMAS[entity.builtinType as BuiltinEntityType];
+    if (!base) throw new Error(`Unknown builtin entity type: ${entity.builtinType}`);
+    if (!entity.secondaryTables?.length) return base;
+    // Merge declarative secondary tables from the template definition
+    const declarativeSecondary = entity.secondaryTables.map((st) => ({
+      table: st.tableName,
+      primaryKey: st.primaryKey,
+      columns: [st.primaryKey, st.parentFkColumn, ...st.fields.map((f) => f.field)],
+      buildRows: () => [] as string[][] // declarative rows handled separately in mass-ops
+    } satisfies SecondaryTableConfig));
+    return {
+      ...base,
+      secondaryTables: [...(base.secondaryTables ?? []), ...declarativeSecondary]
+    };
+  }
+
+  // Custom entity — build schema from EntityDefinition metadata
+  if (!entity.tableName || !entity.primaryKey) {
+    throw new Error(`Custom entity "${entity.name}" is missing tableName or primaryKey`);
+  }
+  const columns = [entity.primaryKey, ...entity.fields.map((f) => f.field)];
+  const fieldMap: Record<string, string> = {};
+  for (const f of entity.fields) fieldMap[f.field] = f.field;
+
+  return {
+    table: entity.tableName,
+    primaryKey: entity.primaryKey,
+    columns,
+    fieldMap,
+    systemColumns: { [entity.primaryKey]: () => "0" }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Topological sort
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns entities sorted so that every entity appears after all of its
+ * dependsOn entries. Throws on cycles.
+ */
+export function topoSort(entities: EntityDefinition[]): EntityDefinition[] {
+  const byName = new Map(entities.map((e) => [e.name, e]));
+  const result: EntityDefinition[] = [];
+  const visited = new Set<string>();
+  const inStack = new Set<string>();
+
+  function visit(name: string) {
+    if (visited.has(name)) return;
+    if (inStack.has(name)) throw new Error(`Cycle detected in entity dependencies: ${name}`);
+    inStack.add(name);
+    const entity = byName.get(name);
+    if (entity) {
+      for (const dep of entity.dependsOn ?? []) {
+        if (byName.has(dep)) visit(dep);
+      }
+      result.push(entity);
+    }
+    inStack.delete(name);
+    visited.add(name);
+  }
+
+  for (const entity of entities) visit(entity.name);
+  return result;
+}
