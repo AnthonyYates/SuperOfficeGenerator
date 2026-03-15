@@ -69,3 +69,9 @@ publish/
 
 # Azure Functions local settings
 local.settings.json
+
+websrc/node_modules/
+websrc/.next
+websrc/.env.local
+websrc/.env.development.local
+websrc/tsconfig.tsbuildinfo
