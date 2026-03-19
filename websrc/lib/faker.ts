@@ -2,48 +2,55 @@ import "server-only";
 
 import {
   Faker,
-  en,
-  nb_NO,
-  de,
-  fr,
-  es,
-  nl,
-  sv,
+  cs_CZ,
   da,
+  de,
+  en,
+  en_GB,
+  es,
   fi,
+  fr,
   it,
+  ja,
+  ko,
+  nb_NO,
+  nl,
   pl,
   pt_BR,
   ru,
-  zh_CN,
-  ja,
-  ko
+  sv,
+  uk,
+  zh_CN
 } from "@faker-js/faker";
 import type { LocaleDefinition } from "@faker-js/faker";
 import type { LocaleCode } from "./types";
 
 // Map user-facing locale codes (as typed in templates/jobs) to @faker-js/faker locale modules.
 const LOCALE_MAP: Record<string, LocaleDefinition> = {
+  cz: cs_CZ,
   en,
+  en_GB,
+  gb: en_GB,
+  de,
+  es,
+  fi,
+  fr,
+  nl,
+  da,
+  it,
+  ja,
+  ko,
   nb: nb_NO,
   nb_NO,
   no: nb_NO,
-  de,
-  fr,
-  es,
-  nl,
-  sv,
-  da,
-  fi,
-  it,
   pl,
   pt_BR,
   pt: pt_BR,
   ru,
+  sv,
+  uk,
   zh_CN,
-  zh: zh_CN,
-  ja,
-  ko
+  zh: zh_CN
 };
 
 // Cache instances by locale key — avoids re-creating on every row/call.
@@ -59,22 +66,30 @@ export function buildFaker(locale: LocaleCode): Faker {
 }
 
 /**
- * Returns the best locale for an entity given job-level preferences and the
- * entity's own fallback list. Picks the first job locale that appears in the
- * entity fallbacks, falling back to the first entity fallback if none match.
+ * Builds the combined locale pool for an entity phase by merging job-level
+ * locales and the entity's own fallback list, then filtering to locales that
+ * are recognised by the faker LOCALE_MAP. The caller picks randomly from this
+ * pool per row, mirroring the C# console app behaviour of varying locale per
+ * company created.
  *
- *   resolveLocale(["nb"], ["en", "nb"])  → "nb"   (job wants nb, entity supports it)
- *   resolveLocale(["nb"], ["en"])        → "en"   (job wants nb, entity only has en)
- *   resolveLocale([], ["en", "nb"])      → "en"   (no job preference → first entity fallback)
+ *   buildLocalePool(["nb"], ["en"])       → ["nb", "en"]
+ *   buildLocalePool(["nb"], ["en", "nb"]) → ["nb", "en"]
+ *   buildLocalePool([], ["en", "nb"])     → ["en", "nb"]
+ *   buildLocalePool(["xx"], [])           → ["en"]  (xx not recognised)
  */
-export function resolveLocale(
+export function buildLocalePool(
   jobLocales: LocaleCode[],
   entityFallbacks: LocaleCode[]
-): LocaleCode {
-  for (const loc of jobLocales) {
-    if (entityFallbacks.includes(loc)) return loc;
+): LocaleCode[] {
+  const seen = new Set<LocaleCode>();
+  const pool: LocaleCode[] = [];
+  for (const loc of [...jobLocales, ...entityFallbacks]) {
+    if (!seen.has(loc) && loc in LOCALE_MAP) {
+      seen.add(loc);
+      pool.push(loc);
+    }
   }
-  return entityFallbacks[0] ?? "en";
+  return pool.length ? pool : ["en"];
 }
 
 export function runFakerPath(fakerInstance: Faker, path: string): unknown {

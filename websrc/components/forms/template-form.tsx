@@ -5,6 +5,7 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { createTemplateAction, updateTemplateAction } from "@/app/actions";
 import type { BuiltinEntityType, TemplateDefinition } from "@/lib/types";
+import { LocalePicker } from "@/components/ui/locale-picker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -693,16 +694,15 @@ function EntityCard({
 
           {/* Locales + dependsOn */}
           <div className="flex flex-wrap gap-3">
-            <label className="flex flex-1 items-center gap-1 text-xs text-slate-500">
-              locales
-              <input
-                type="text"
-                value={entity.localeFallbacks}
-                onChange={(e) => onUpdateEntity({ localeFallbacks: e.target.value })}
-                placeholder="en, nb"
-                className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-700 focus:border-brand focus:outline-none"
-              />
-            </label>
+            <div className="flex flex-1 items-start gap-1 text-xs text-slate-500">
+              <span className="mt-1 shrink-0">locales</span>
+              <div className="min-w-0 flex-1">
+                <LocalePicker
+                  value={entity.localeFallbacks.split(",").map((s) => s.trim()).filter(Boolean)}
+                  onChange={(locs) => onUpdateEntity({ localeFallbacks: locs.join(", ") })}
+                />
+              </div>
+            </div>
             <label className="flex flex-1 items-center gap-1 text-xs text-slate-500">
               depends on
               <input

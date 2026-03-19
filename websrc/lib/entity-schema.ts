@@ -53,6 +53,44 @@ function pickRoundRobin(ids: number[], index: number): string {
   return String(ids[index % ids.length]);
 }
 
+/**
+ * Overrides for locales where the language code does not match the ISO 3166-1
+ * alpha-2 country code (e.g. faker "uk" = Ukrainian, ISO country = "UA").
+ */
+const LOCALE_COUNTRY_OVERRIDES: Record<string, string> = {
+  uk: "UA",   // Ukrainian locale → Ukraine
+  cs: "CZ",   // Czech locale → Czech Republic (also covered by cs_CZ but not "cs" alone)
+  cz: "CZ",   // user-facing alias used in LOCALE_MAP
+  nb: "NO",   // user-facing alias used in LOCALE_MAP
+  en_GB: "GB" // English (UK) locale → United Kingdom
+};
+
+/**
+ * Derives a country from a faker locale code. Checks explicit overrides first,
+ * then extracts the region segment (e.g. "nb_NO" → "NO", "pt_BR" → "BR") or
+ * treats a 2-letter language code as a country code (e.g. "de" → "DE").
+ * Falls back to a random country.
+ */
+export function countryIdFromLocale(
+  locale: string,
+  countries: CachedMetadata["countries"]
+): string {
+  if (!countries.length) return "0";
+
+  const overrideCode = LOCALE_COUNTRY_OVERRIDES[locale.toLowerCase()];
+  const underscoreIdx = locale.indexOf("_");
+  const candidate = overrideCode
+    ?? (underscoreIdx >= 0 ? locale.slice(underscoreIdx + 1) : locale.toUpperCase());
+
+  if (candidate.length === 2) {
+    const match = countries.find(
+      (c) => c.twoLetterISOCountry.toUpperCase() === candidate
+    );
+    if (match) return String(match.id);
+  }
+  return String(countries[Math.floor(Math.random() * countries.length)].id);
+}
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -98,7 +136,7 @@ const companySchema: EntitySchema = {
     contact_id: () => "0",
     business_idx: (ctx) => String(pickRoundRobin(ctx.metadata.businesses.map((b) => b.id), ctx.rowIndex) ?? 0),
     category_idx: (ctx) => String(pickRoundRobin(ctx.metadata.categories.map((c) => c.id), ctx.rowIndex) ?? 0),
-    country_id: (ctx) => String(ctx.metadata.countries.find((c) => c.twoLetterISOCountry === "US")?.id ?? ctx.metadata.countries[0]?.id ?? 0)
+    country_id: (ctx) => countryIdFromLocale(ctx.locale, ctx.metadata.countries)
   }
 };
 
@@ -131,7 +169,7 @@ const personSchema: EntitySchema = {
     },
     // Mirror the owning company's round-robin business/category/country so person
     // and company always share the same classification values for the same row index.
-    country_id: (ctx) => String(ctx.metadata.countries.find((c) => c.twoLetterISOCountry === "US")?.id ?? ctx.metadata.countries[0]?.id ?? 0),
+    country_id: (ctx) => countryIdFromLocale(ctx.locale, ctx.metadata.countries),
     business_idx: (ctx) => String(pickRoundRobin(ctx.metadata.businesses.map((b) => b.id), ctx.rowIndex) ?? 0),
     category_idx: (ctx) => String(pickRoundRobin(ctx.metadata.categories.map((c) => c.id), ctx.rowIndex) ?? 0)
   },

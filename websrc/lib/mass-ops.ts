@@ -1,7 +1,7 @@
 import "server-only";
 
 import { SaleStatus, type ProjectMember, type ParticipantInfo } from "@superoffice/webapi";
-import { buildFaker, runFakerPath, resolveLocale } from "./faker";
+import { buildFaker, runFakerPath, buildLocalePool } from "./faker";
 import { getMetadata } from "./metadata";
 import {
   createContactAgent,
@@ -16,6 +16,7 @@ import { getSystemUserTicket, extractEnv } from "./system-user";
 import {
   resolveSchema,
   topoSort,
+  countryIdFromLocale,
   type EntitySchema,
   type InsertContext,
   type SecondaryTableConfig
@@ -24,7 +25,8 @@ import type {
   EntityDefinition,
   JobManifest,
   TemplateDefinition,
-  JobPhaseEvent
+  JobPhaseEvent,
+  TemplateFieldRule
 } from "./types";
 
 const CONCURRENCY = 5;   // simultaneous API calls for entity-agent mode
@@ -46,35 +48,59 @@ function pickRoundRobin<T>(arr: T[], idx: number): T | undefined {
   return arr[idx % arr.length];
 }
 
-function getFieldValue(
-  entity: EntityDefinition,
-  fieldName: string,
-  fakerInstance: ReturnType<typeof buildFaker>,
+
+/** Resolves a single field rule to a string value using the faker instance and insert context. */
+function applyFieldRule(
+  rule: TemplateFieldRule,
+  f: ReturnType<typeof buildFaker>,
   ctx: InsertContext
-): string | undefined {
-  const rule = entity.fields.find((f) => f.field === fieldName);
-  if (!rule) return undefined;
+): string {
   switch (rule.strategy) {
     case "static":
       return rule.value ?? "";
     case "faker":
-      return rule.fakerPath ? String(runFakerPath(fakerInstance, rule.fakerPath)) : "";
+      return rule.fakerPath ? String(runFakerPath(f, rule.fakerPath)) : "";
     case "list":
       return rule.list?.[Math.floor(Math.random() * (rule.list.length || 1))] ?? "";
     case "sequence":
-      return fakerInstance.string.alphanumeric(8).toUpperCase();
+      return f.string.alphanumeric(8).toUpperCase();
     case "fk": {
       if (!rule.fkEntity) return "0";
       const ids = ctx.insertedIds.get(rule.fkEntity) ?? [];
       if (!ids.length) return "0";
-      if (rule.fkSelect === "random") {
-        return String(ids[Math.floor(Math.random() * ids.length)]);
-      }
-      // default: round-robin
-      return String(ids[ctx.rowIndex % ids.length]);
+      return rule.fkSelect === "random"
+        ? String(ids[Math.floor(Math.random() * ids.length)])
+        : String(ids[ctx.rowIndex % ids.length]);
     }
     default:
       return "";
+  }
+}
+
+/** Looks up a named field on an entity and applies its rule. Returns undefined when the field has no rule. */
+function getFieldValue(
+  entity: EntityDefinition,
+  fieldName: string,
+  f: ReturnType<typeof buildFaker>,
+  ctx: InsertContext
+): string | undefined {
+  const rule = entity.fields.find((r) => r.field === fieldName);
+  return rule ? applyFieldRule(rule, f, ctx) : undefined;
+}
+
+/** Inserts allData into a secondary table in BATCH_SIZE chunks. Failures are non-fatal. */
+async function batchInsert(
+  agent: ReturnType<typeof createDatabaseTableAgent>,
+  table: string,
+  columns: string[],
+  allData: string[][]
+): Promise<void> {
+  for (let i = 0; i < allData.length; i += BATCH_SIZE) {
+    try {
+      await agent.insertAsync(table, columns, allData.slice(i, i + BATCH_SIZE));
+    } catch {
+      // Secondary table failures are non-fatal
+    }
   }
 }
 
@@ -99,7 +125,7 @@ async function* executeWithEntityAgents(
     }
     const entityType = entityDef.builtinType;
 
-    const locale = resolveLocale(manifest.locales, entityDef.localeFallbacks);
+    const localePool = buildLocalePool(manifest.locales, entityDef.localeFallbacks);
 
     const companyIds = insertedIds.get("company") ?? [];
     const personIds = insertedIds.get("contact") ?? [];
@@ -125,6 +151,7 @@ async function* executeWithEntityAgents(
 
       const settled = await Promise.allSettled(
         indices.map(async (i) => {
+          const locale = localePool[Math.floor(Math.random() * localePool.length)];
           const f = buildFaker(locale);
           const ctx: InsertContext = { insertedIds, metadata, rowIndex: i, locale };
           const field = (name: string) => getFieldValue(entityDef, name, f, ctx);
@@ -137,14 +164,16 @@ async function* executeWithEntityAgents(
             if (dept) entity.department = dept;
             const orgNr = field("orgnr");
             if (orgNr) entity.orgNr = orgNr;
+            const phone = field("phone");
+            if (phone) entity.phones = [{ value: phone, description: "Work" }];
+            const email = field("email");
+            if (email) entity.emails = [{ value: email, description: "Work" }];
             const biz = pickRoundRobin(metadata.businesses, i);
             const cat = pickRoundRobin(metadata.categories, i);
-            const ctry =
-              metadata.countries.find((c) => c.twoLetterISOCountry === "US") ??
-              metadata.countries[0];
+            const countryId = Number(countryIdFromLocale(locale, metadata.countries));
             if (biz) entity.business = { id: biz.id };
             if (cat) entity.category = { id: cat.id };
-            if (ctry) entity.country = { countryId: ctry.id };
+            if (countryId) entity.country = { countryId };
             const saved = await agent.saveContactEntityAsync(entity);
             return saved.contactId!;
           }
@@ -298,36 +327,9 @@ function generateSingleRow(
   const row: Record<string, string> = {};
 
   for (const fieldRule of entity.fields) {
-    let value: unknown;
-    switch (fieldRule.strategy) {
-      case "static":
-        value = fieldRule.value ?? "";
-        break;
-      case "faker":
-        if (!fieldRule.fakerPath) throw new Error(`Missing fakerPath for field ${fieldRule.field}`);
-        value = runFakerPath(f, fieldRule.fakerPath);
-        break;
-      case "list":
-        value = fieldRule.list?.[Math.floor(Math.random() * (fieldRule.list.length || 1))] ?? "";
-        break;
-      case "sequence":
-        value = f.string.alphanumeric(8).toUpperCase();
-        break;
-      case "fk": {
-        if (!fieldRule.fkEntity) { value = "0"; break; }
-        const ids = ctx.insertedIds.get(fieldRule.fkEntity) ?? [];
-        if (!ids.length) { value = "0"; break; }
-        value = fieldRule.fkSelect === "random"
-          ? ids[Math.floor(Math.random() * ids.length)]
-          : ids[ctx.rowIndex % ids.length];
-        break;
-      }
-      default:
-        value = "";
-    }
     const dbColumn = schema.fieldMap[fieldRule.field] ?? fieldRule.field;
     if (schema.columns.includes(dbColumn)) {
-      row[dbColumn] = String(value ?? "");
+      row[dbColumn] = applyFieldRule(fieldRule, f, ctx);
     }
   }
 
@@ -363,17 +365,7 @@ async function insertSecondaryRows(
     }
     if (!allData.length) continue;
 
-    for (let i = 0; i < allData.length; i += BATCH_SIZE) {
-      try {
-        await agent.insertAsync(
-          config.table,
-          config.columns,
-          allData.slice(i, i + BATCH_SIZE)
-        );
-      } catch {
-        // Secondary table failures are non-fatal
-      }
-    }
+    await batchInsert(agent, config.table, config.columns, allData);
   }
 }
 
@@ -405,40 +397,13 @@ async function insertDeclarativeSecondaryRows(
         String(parentId)   // parent FK
       ];
       for (const fieldRule of stDef.fields) {
-        let value: unknown = "";
-        switch (fieldRule.strategy) {
-          case "static": value = fieldRule.value ?? ""; break;
-          case "faker":
-            value = fieldRule.fakerPath ? String(runFakerPath(f, fieldRule.fakerPath)) : "";
-            break;
-          case "list":
-            value = fieldRule.list?.[Math.floor(Math.random() * (fieldRule.list.length || 1))] ?? "";
-            break;
-          case "sequence": value = f.string.alphanumeric(8).toUpperCase(); break;
-          case "fk": {
-            if (!fieldRule.fkEntity) { value = "0"; break; }
-            const ids = ctx.insertedIds.get(fieldRule.fkEntity) ?? [];
-            value = ids.length
-              ? (fieldRule.fkSelect === "random"
-                ? ids[Math.floor(Math.random() * ids.length)]
-                : ids[ctx.rowIndex % ids.length])
-              : "0";
-            break;
-          }
-        }
-        rowValues.push(String(value ?? ""));
+        rowValues.push(applyFieldRule(fieldRule, f, ctx));
       }
       allData.push(rowValues);
     }
 
     if (!allData.length) continue;
-    for (let i = 0; i < allData.length; i += BATCH_SIZE) {
-      try {
-        await agent.insertAsync(stDef.tableName, columns, allData.slice(i, i + BATCH_SIZE));
-      } catch {
-        // Non-fatal
-      }
-    }
+    await batchInsert(agent, stDef.tableName, columns, allData);
   }
 }
 
@@ -469,7 +434,7 @@ async function* executeWithMassOps(
 
   for (const entityDef of sortedEntities) {
     const schema = resolveSchema(entityDef);
-    const locale = resolveLocale(manifest.locales, entityDef.localeFallbacks);
+    const localePool = buildLocalePool(manifest.locales, entityDef.localeFallbacks);
 
     // Counts are per-company for all dependent entity types.
     const companyIds = insertedIds.get("company") ?? [];
@@ -485,6 +450,7 @@ async function* executeWithMassOps(
 
     const rowObjects: Record<string, string>[] = [];
     for (let i = 0; i < quantity; i++) {
+      const locale = localePool[Math.floor(Math.random() * localePool.length)];
       const ctx: InsertContext = { insertedIds, metadata, rowIndex: i, locale };
       rowObjects.push(generateSingleRow(entityDef, schema, ctx));
     }
@@ -511,12 +477,14 @@ async function* executeWithMassOps(
 
         // Imperative secondary tables (from EntitySchema — builtin entities)
         if (schema.secondaryTables?.length) {
-          await insertSecondaryRows(agent, schema.secondaryTables, batchObjects, ids, metadata, insertedIds, locale, batchStart);
+          const batchLocale = localePool[Math.floor(Math.random() * localePool.length)];
+          await insertSecondaryRows(agent, schema.secondaryTables, batchObjects, ids, metadata, insertedIds, batchLocale, batchStart);
         }
 
         // Declarative secondary tables (from EntityDefinition — custom + template-defined)
         if (entityDef.secondaryTables?.length) {
-          await insertDeclarativeSecondaryRows(agent, entityDef, ids, insertedIds, metadata, locale, batchStart);
+          const batchLocale = localePool[Math.floor(Math.random() * localePool.length)];
+          await insertDeclarativeSecondaryRows(agent, entityDef, ids, insertedIds, metadata, batchLocale, batchStart);
         }
       } catch (err) {
         const detail = (err as { response?: { data?: unknown } }).response?.data

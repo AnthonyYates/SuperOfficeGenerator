@@ -4,6 +4,7 @@ import { useFormState } from "react-dom";
 import { useState, useMemo } from "react";
 import type { TemplateDefinition } from "@/lib/types";
 import { createJobAction } from "@/app/actions";
+import { LocalePicker } from "@/components/ui/locale-picker";
 
 const initialState = { error: null as null | string | Record<string, string[]>, success: false };
 
@@ -24,6 +25,7 @@ export function JobForm({ templates }: JobFormProps) {
 
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(firstTemplate?.id ?? "");
   const [counts, setCounts] = useState<Record<string, string>>(() => countsFromTemplate(firstTemplate));
+  const [locales, setLocales] = useState<string[]>([]);
 
   const selectedTemplate = useMemo(
     () => templates.find((t) => t.id === selectedTemplateId),
@@ -70,15 +72,15 @@ export function JobForm({ templates }: JobFormProps) {
           </select>
         </label>
       </div>
-      <label className="text-sm font-medium text-slate-700">
-        Locales (comma separated)
-        <input
+      <div>
+        <p className="text-sm font-medium text-slate-700 mb-1">Locales</p>
+        <LocalePicker
           name="locales"
+          value={locales}
+          onChange={setLocales}
           disabled={isDisabled}
-          placeholder={(firstTemplate?.entities[0]?.localeFallbacks ?? ["en"]).join(", ")}
-          className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-brand focus:outline-none"
         />
-      </label>
+      </div>
       <div className="space-y-2">
         <p className="text-sm font-medium text-slate-700">API mode</p>
         <div className="grid gap-3 sm:grid-cols-2">
