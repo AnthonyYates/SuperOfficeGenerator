@@ -1,11 +1,10 @@
 import Link from "next/link";
-import { summarizeDashboard, listJobs, listTemplates } from "@/lib/services";
+import { summarizeDashboard, listJobs } from "@/lib/services";
 
 export default async function DashboardPage() {
-  const [summary, jobs, templates] = await Promise.all([
+  const [summary, jobs] = await Promise.all([
     summarizeDashboard(),
-    listJobs(),
-    listTemplates()
+    listJobs()
   ]);
 
   const recentJobs = jobs.slice(0, 3);

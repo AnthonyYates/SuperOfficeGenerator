@@ -53,6 +53,11 @@ function pickRoundRobin(ids: number[], index: number): string {
   return String(ids[index % ids.length]);
 }
 
+function pickRandom(items: Array<{ id: number }>, fallback = "0"): string {
+  if (!items.length) return fallback;
+  return String(items[Math.floor(Math.random() * items.length)].id);
+}
+
 /**
  * Overrides for locales where the language code does not match the ISO 3166-1
  * alpha-2 country code (e.g. faker "uk" = Ukrainian, ISO country = "UA").
@@ -134,8 +139,8 @@ const companySchema: EntitySchema = {
   },
   systemColumns: {
     contact_id: () => "0",
-    business_idx: (ctx) => String(pickRoundRobin(ctx.metadata.businesses.map((b) => b.id), ctx.rowIndex) ?? 0),
-    category_idx: (ctx) => String(pickRoundRobin(ctx.metadata.categories.map((c) => c.id), ctx.rowIndex) ?? 0),
+    business_idx: (ctx) => pickRandom(ctx.metadata.businesses),
+    category_idx: (ctx) => pickRandom(ctx.metadata.categories),
     country_id: (ctx) => countryIdFromLocale(ctx.locale, ctx.metadata.countries)
   }
 };
@@ -167,18 +172,16 @@ const personSchema: EntitySchema = {
       const companyCount = ctx.insertedIds.get("company")?.length ?? 1;
       return String(Math.floor(ctx.rowIndex / companyCount) + 1);
     },
-    // Mirror the owning company's round-robin business/category/country so person
-    // and company always share the same classification values for the same row index.
     country_id: (ctx) => countryIdFromLocale(ctx.locale, ctx.metadata.countries),
-    business_idx: (ctx) => String(pickRoundRobin(ctx.metadata.businesses.map((b) => b.id), ctx.rowIndex) ?? 0),
-    category_idx: (ctx) => String(pickRoundRobin(ctx.metadata.categories.map((c) => c.id), ctx.rowIndex) ?? 0)
+    business_idx: (ctx) => pickRandom(ctx.metadata.businesses),
+    category_idx: (ctx) => pickRandom(ctx.metadata.categories)
   },
   secondaryTables: [
     {
       table: "phone",
       primaryKey: "phone_id",
       columns: ["phone_id", "contact_id", "person_id", "phone", "phonetype_idx", "rank"],
-      buildRows: (parentRow, parentId, ctx) => {
+      buildRows: (parentRow, parentId, _ctx) => {
         const phone = parentRow["phone"] ?? parentRow["mobile"];
         if (!phone) return [];
         const contactId = parentRow["contact_id"] ?? "0";

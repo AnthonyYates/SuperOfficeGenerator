@@ -2,7 +2,7 @@ import "server-only";
 
 import { SaleStatus, type ProjectMember, type ParticipantInfo } from "@superoffice/webapi";
 import { buildFaker, runFakerPath, buildLocalePool } from "./faker";
-import { getMetadata } from "./metadata";
+import { getMetadata, prefetchMdoListItems } from "./metadata";
 import {
   createContactAgent,
   createPersonAgent,
@@ -72,6 +72,11 @@ function applyFieldRule(
         ? String(ids[Math.floor(Math.random() * ids.length)])
         : String(ids[ctx.rowIndex % ids.length]);
     }
+    case "mdolist": {
+      const items = ctx.metadata.listItems.get(rule.listId ?? 0) ?? [];
+      if (!items.length) return "0";
+      return String(items[Math.floor(Math.random() * items.length)].id);
+    }
     default:
       return "";
   }
@@ -104,6 +109,27 @@ async function batchInsert(
   }
 }
 
+// ─── MDO list prefetch ────────────────────────────────────────────────────────
+
+/** Collects all unique mdolist rule descriptors from a template and prefetches their items. */
+async function prefetchTemplateMdoLists(
+  template: import("./types").TemplateDefinition,
+  webApiUrl: string,
+  accessToken: string
+): Promise<void> {
+  const rules: Array<{ listId: number; listType: string }> = [];
+  for (const entity of template.entities) {
+    for (const field of [...entity.fields, ...(entity.secondaryTables?.flatMap((st) => st.fields) ?? [])]) {
+      if (field.strategy === "mdolist" && field.listId) {
+        rules.push({ listId: field.listId, listType: field.listType ?? "" });
+      }
+    }
+  }
+  if (rules.length) {
+    await prefetchMdoListItems(webApiUrl, accessToken, rules);
+  }
+}
+
 // ─── Entity-agent execution path ─────────────────────────────────────────────
 // Uses createDefault*EntityAsync + save*EntityAsync — works with any OIDC token
 
@@ -114,6 +140,7 @@ async function* executeWithEntityAgents(
   webApiUrl: string
 ): AsyncGenerator<JobPhaseEvent> {
   const metadata = await getMetadata(webApiUrl, accessToken);
+  await prefetchTemplateMdoLists(template, webApiUrl, accessToken);
   const insertedIds = new Map<string, number[]>();
   const sortedEntities = topoSort(template.entities);
 
@@ -162,18 +189,31 @@ async function* executeWithEntityAgents(
             entity.name = field("name") ?? f.company.name();
             const dept = field("department");
             if (dept) entity.department = dept;
-            const orgNr = field("orgnr");
+            const orgNr = field("orgNr") ?? field("orgnr");
             if (orgNr) entity.orgNr = orgNr;
             const phone = field("phone");
             if (phone) entity.phones = [{ value: phone, description: "Work" }];
             const email = field("email");
             if (email) entity.emails = [{ value: email, description: "Work" }];
+            // Lookup fields: template override (mdolist ID) or metadata fallback
+            const bizValue = field("business");
+            const catValue = field("category");
+            const countryValue = field("country");
             const biz = pickRoundRobin(metadata.businesses, i);
             const cat = pickRoundRobin(metadata.categories, i);
             const countryId = Number(countryIdFromLocale(locale, metadata.countries));
-            if (biz) entity.business = { id: biz.id };
-            if (cat) entity.category = { id: cat.id };
-            if (countryId) entity.country = { countryId };
+            entity.business = bizValue ? { id: Number(bizValue) } : biz ? { id: biz.id } : undefined;
+            entity.category = catValue ? { id: Number(catValue) } : cat ? { id: cat.id } : undefined;
+            if (countryValue) entity.country = { countryId: Number(countryValue) };
+            else if (countryId) entity.country = { countryId };
+            // Generic fallback: apply any remaining template fields not handled above
+            const handledCompany = new Set(["name", "department", "orgNr", "orgnr", "phone", "email", "business", "category", "country"]);
+            for (const rule of entityDef.fields) {
+              if (!handledCompany.has(rule.field)) {
+                const val = applyFieldRule(rule, f, ctx);
+                (entity as Record<string, unknown>)[rule.field] = rule.fieldCategory === "service-object" ? { id: Number(val) } : val;
+              }
+            }
             const saved = await agent.saveContactEntityAsync(entity);
             return saved.contactId!;
           }
@@ -183,15 +223,25 @@ async function* executeWithEntityAgents(
             if (!contactId) throw new Error("No company IDs available for person FK");
             const agent = createPersonAgent(webApiUrl, accessToken);
             const entity = await agent.createDefaultPersonEntityAsync();
-            entity.firstname = field("firstName") ?? f.person.firstName();
-            entity.lastname = field("lastName") ?? f.person.lastName();
+            entity.firstname = field("firstName") ?? field("firstname") ?? f.person.firstName();
+            entity.lastname = field("lastName") ?? field("lastname") ?? f.person.lastName();
             const title = field("title");
             if (title) entity.title = title;
             entity.contact = { contactId };
             const phone = field("phone");
             if (phone) entity.officePhones = [{ value: phone, description: "Work" }];
+            const mobile = field("mobile");
+            if (mobile) entity.mobilePhones = [{ value: mobile, description: "Mobile" }];
             const email = field("email");
             if (email) entity.emails = [{ value: email, description: "Work" }];
+            // Generic fallback for any other template fields
+            const handledContact = new Set(["firstName", "firstname", "lastName", "lastname", "title", "phone", "mobile", "email"]);
+            for (const rule of entityDef.fields) {
+              if (!handledContact.has(rule.field)) {
+                const val = applyFieldRule(rule, f, ctx);
+                (entity as Record<string, unknown>)[rule.field] = rule.fieldCategory === "service-object" ? { id: Number(val) } : val;
+              }
+            }
             const saved = await agent.savePersonEntityAsync(entity);
             return saved.personId!;
           }
@@ -204,6 +254,14 @@ async function* executeWithEntityAgents(
             const pStatus = pickRoundRobin(metadata.projectStatuses, i);
             if (pType) entity.projectType = { id: pType.id };
             if (pStatus) entity.projectStatus = { id: pStatus.id };
+            // Generic fallback for any other template fields
+            const handledProject = new Set(["name"]);
+            for (const rule of entityDef.fields) {
+              if (!handledProject.has(rule.field)) {
+                const val = applyFieldRule(rule, f, ctx);
+                (entity as Record<string, unknown>)[rule.field] = rule.fieldCategory === "service-object" ? { id: Number(val) } : val;
+              }
+            }
             const saved = await agent.saveProjectEntityAsync(entity);
             const projectId = saved.projectId!;
 
@@ -235,8 +293,16 @@ async function* executeWithEntityAgents(
             const agent = createAppointmentAgent(webApiUrl, accessToken);
             const entity = await agent.createDefaultAppointmentEntityAsync();
             entity.title = field("title") ?? f.lorem.words(3);
-            const desc = field("description");
+            const desc = field("description") ?? field("agenda");
             if (desc) entity.description = desc;
+            // Generic fallback for any other template fields
+            const handledFollowUp = new Set(["title", "description", "agenda"]);
+            for (const rule of entityDef.fields) {
+              if (!handledFollowUp.has(rule.field)) {
+                const val = applyFieldRule(rule, f, ctx);
+                (entity as Record<string, unknown>)[rule.field] = rule.fieldCategory === "service-object" ? { id: Number(val) } : val;
+              }
+            }
             entity.contact = { contactId };
             const personId = pickRoundRobin(personIds, i);
             if (personId) {
@@ -264,6 +330,14 @@ async function* executeWithEntityAgents(
             entity.amount = amountStr
               ? parseFloat(amountStr)
               : f.number.float({ min: 1000, max: 50000 });
+            // Generic fallback for any other template fields
+            const handledSale = new Set(["heading", "amount"]);
+            for (const rule of entityDef.fields) {
+              if (!handledSale.has(rule.field)) {
+                const val = applyFieldRule(rule, f, ctx);
+                (entity as Record<string, unknown>)[rule.field] = rule.fieldCategory === "service-object" ? { id: Number(val) } : val;
+              }
+            }
             entity.contact = { contactId };
             const personId = pickRoundRobin(personIds, i);
             if (personId) entity.person = { personId };
@@ -431,6 +505,7 @@ async function* executeWithMassOps(
     agent = createDatabaseTableAgent(webApiUrl, accessToken);
   }
   const metadata = await getMetadata(webApiUrl, accessToken);
+  await prefetchTemplateMdoLists(template, webApiUrl, accessToken);
   const insertedIds = new Map<string, number[]>();
   const sortedEntities = topoSort(template.entities);
 

@@ -4,8 +4,7 @@ import {
   AppointmentAgent,
   ProjectAgent,
   SaleAgent,
-  DatabaseTableAgent,
-  ListAgent
+  DatabaseTableAgent
 } from "@superoffice/webapi";
 import type { AxiosRequestConfig } from "axios";
 
@@ -62,7 +61,3 @@ export function createDatabaseTableAgentWithTicket(webApiUrl: string, ticket: st
   );
 }
 
-// Metadata agent — fetches list data (countries, businesses, categories, etc.)
-export function createListAgent(webApiUrl: string, accessToken: string) {
-  return new ListAgent(webApiUrl, authorizedConfig(accessToken), "en");
-}

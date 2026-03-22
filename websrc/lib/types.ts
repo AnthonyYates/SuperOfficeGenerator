@@ -6,9 +6,17 @@ export type BuiltinEntityType = "company" | "contact" | "followUp" | "project" |
 // Field rules
 // ---------------------------------------------------------------------------
 
+/**
+ * How a field value should be applied to the entity DTO in entity-agent mode.
+ *   "string"         → set as a plain string value
+ *   "integer"        → set as a plain string (engine parses where needed)
+ *   "service-object" → wrap as { id: Number(value) } because the SDK expects a typed reference object
+ */
+export type EntityFieldCategory = "string" | "integer" | "service-object";
+
 export interface TemplateFieldRule {
   field: string;
-  strategy: "static" | "faker" | "list" | "sequence" | "fk";
+  strategy: "static" | "faker" | "list" | "sequence" | "fk" | "mdolist";
   // faker
   fakerPath?: string;
   // static
@@ -18,6 +26,12 @@ export interface TemplateFieldRule {
   // fk — resolved from another entity that ran before this one
   fkEntity?: string;              // references EntityDefinition.name within the same template
   fkSelect?: "round-robin" | "random";
+  // mdolist — picks a random item ID from a live SuperOffice MDO list
+  listId?: number;                // numeric list ID from GET /api/v1/List catalog
+  listType?: string;              // "udlist" = user-defined, anything else = built-in
+  listName?: string;              // human-readable display name (stored for self-describing templates)
+  // entity-agent mode field application hint — set when discovered from FieldProperties
+  fieldCategory?: EntityFieldCategory;
 }
 
 // ---------------------------------------------------------------------------

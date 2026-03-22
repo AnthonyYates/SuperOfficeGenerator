@@ -34,5 +34,5 @@ model Job {
   items           String    // JSON: JobItemLog[]
   phases          String?   // JSON: Record<string, JobPhaseResult>
 
-  template        Template  @relation(fields: [templateId], references: [id])
+  template        Template  @relation(fields: [templateId], references: [id], onDelete: Cascade)
 }

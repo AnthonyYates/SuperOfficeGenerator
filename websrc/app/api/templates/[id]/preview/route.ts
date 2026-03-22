@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getTemplate } from "@/lib/services";
-import { buildFaker, resolveLocale, runFakerPath } from "@/lib/faker";
+import { buildFaker, buildLocalePool, runFakerPath } from "@/lib/faker";
 
 export async function GET(
   _req: Request,
@@ -22,7 +22,7 @@ export async function GET(
   const allLocales = [...new Set(template.entities.flatMap((e) => e.localeFallbacks))];
 
   const entities = template.entities.map((entity) => {
-    const locale = resolveLocale(allLocales, entity.localeFallbacks);
+    const locale = buildLocalePool(allLocales, entity.localeFallbacks)[0] ?? "en";
     const f = buildFaker(locale);
 
     const fields = entity.fields.map((rule) => {
@@ -43,6 +43,9 @@ export async function GET(
             break;
           case "fk":
             value = `(fk → ${rule.fkEntity ?? "?"})`;
+            break;
+          case "mdolist":
+            value = `(MDO list: ${rule.listName ?? rule.listId ?? "?"})`;
             break;
         }
       } catch {

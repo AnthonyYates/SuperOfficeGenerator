@@ -92,6 +92,35 @@ export function buildLocalePool(
   return pool.length ? pool : ["en"];
 }
 
+/** Namespaces that don't produce plain string/number output suitable for CRM fields. */
+const FAKER_SKIP_NAMESPACES = new Set(["_randomizer", "helpers", "date", "rawDefinitions"]);
+
+let _fakerPathsCache: string[] | null = null;
+
+/**
+ * Introspects the faker instance and returns all callable paths in "namespace.method" format.
+ * Results are memoised — the list is static for a given faker version.
+ */
+export function getFakerPaths(): string[] {
+  if (_fakerPathsCache) return _fakerPathsCache;
+
+  const instance = buildFaker("en");
+  const paths: string[] = [];
+
+  for (const [namespace, mod] of Object.entries(instance)) {
+    if (FAKER_SKIP_NAMESPACES.has(namespace)) continue;
+    if (!mod || typeof mod !== "object") continue;
+    for (const [method, fn] of Object.entries(mod as Record<string, unknown>)) {
+      if (typeof fn === "function") {
+        paths.push(`${namespace}.${method}`);
+      }
+    }
+  }
+
+  _fakerPathsCache = paths.sort();
+  return _fakerPathsCache;
+}
+
 export function runFakerPath(fakerInstance: Faker, path: string): unknown {
   const parts = path.split(".");
   if (parts.length !== 2) {

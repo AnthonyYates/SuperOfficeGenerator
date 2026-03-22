@@ -224,6 +224,8 @@ export async function writeTemplates(templates: TemplateDefinition[]): Promise<v
   );
 
   const ids = templates.map((t) => t.id);
+  // Delete orphaned jobs first to satisfy the Job→Template FK constraint
+  await prisma.job.deleteMany({ where: { templateId: { notIn: ids } } });
   await prisma.template.deleteMany({ where: { id: { notIn: ids } } });
 }
 

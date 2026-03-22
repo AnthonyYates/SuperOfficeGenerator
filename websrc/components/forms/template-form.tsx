@@ -4,7 +4,8 @@ import { useFormState } from "react-dom";
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { createTemplateAction, updateTemplateAction } from "@/app/actions";
-import type { BuiltinEntityType, TemplateDefinition, TemplateMode } from "@/lib/types";
+import type { BuiltinEntityType, EntityFieldCategory, TemplateDefinition, TemplateMode } from "@/lib/types";
+import type { EntityFieldInfo } from "@/lib/metadata";
 import { LocalePicker } from "@/components/ui/locale-picker";
 
 // ─── DB model types (mirrored from lib/db-model.ts for client use) ────────────
@@ -13,6 +14,9 @@ interface DbModelField {
   name: string;
   type: number;
   description: string | null;
+  // Present for entity-mode fields discovered from FieldProperties
+  fieldCategory?: EntityFieldCategory;
+  serviceTypeName?: string;
 }
 
 interface DbModelTable {
@@ -23,8 +27,14 @@ interface DbModelTable {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Strategy = "faker" | "static" | "list" | "sequence" | "fk";
+type Strategy = "faker" | "static" | "list" | "sequence" | "fk" | "mdolist";
 type FkSelect = "round-robin" | "random";
+
+interface MdoListDef {
+  id: number;
+  name: string;
+  listType: string;
+}
 
 interface FieldState {
   _id: string;
@@ -35,6 +45,12 @@ interface FieldState {
   list: string; // comma-separated
   fkEntity: string;
   fkSelect: FkSelect;
+  // mdolist
+  mdoListId: number | null;
+  mdoListType: string;
+  mdoListName: string;
+  // entity-agent mode hint (set when field is selected from FieldProperties-based picker)
+  fieldCategory?: EntityFieldCategory;
 }
 
 interface SecondaryTableState {
@@ -64,52 +80,13 @@ interface EntityState {
 
 const BUILTIN_TYPES: BuiltinEntityType[] = ["company", "contact", "followUp", "project", "sale"];
 
-/** System-managed columns injected automatically for each builtin type.
- *  These are NOT template fields — they cannot be overridden in the field list.
- *  Shown as a read-only annotation in the entity card. */
-const SYSTEM_FIELDS: Record<BuiltinEntityType, Array<{ column: string; note: string }>> = {
-  company: [
-    { column: "contact_id", note: "auto (INSERT trigger)" },
-    { column: "business_idx", note: "round-robin from tenant business list" },
-    { column: "category_idx", note: "round-robin from tenant category list" },
-    { column: "country_id", note: "US if available, else first country" }
-  ],
-  contact: [
-    { column: "person_id", note: "auto (INSERT trigger)" },
-    { column: "contact_id", note: "round-robin FK → company" },
-    { column: "rank", note: "auto (rowIndex ÷ companyCount + 1)" },
-    { column: "business_idx", note: "mirrors owning company (round-robin)" },
-    { column: "category_idx", note: "mirrors owning company (round-robin)" },
-    { column: "country_id", note: "mirrors owning company" }
-  ],
-  followUp: [
-    { column: "appointment_id", note: "auto (INSERT trigger)" },
-    { column: "contact_id", note: "round-robin FK → company" },
-    { column: "person_id", note: "round-robin FK → contact" },
-    { column: "sale_id", note: "round-robin FK → sale (0 if none)" },
-    { column: "project_id", note: "round-robin FK → project (0 if none)" },
-    { column: "associate_id / group_idx", note: "current user from metadata" },
-    { column: "task_idx", note: "first task type from metadata" },
-    { column: "type / status / done", note: "appointment defaults (1 / 1 / epoch)" },
-    { column: "do_by / endDate / activeDate", note: "spread across next 30 weekdays (08:00–17:00)" }
-  ],
-  project: [
-    { column: "project_id", note: "auto (INSERT trigger)" },
-    { column: "type_idx / status_idx", note: "first project type/status from metadata" },
-    { column: "project_number", note: "sequential (rowIndex + 1)" },
-    { column: "associate_id / group_id", note: "current user from metadata" }
-  ],
-  sale: [
-    { column: "sale_id", note: "auto (INSERT trigger)" },
-    { column: "contact_id", note: "round-robin FK → company" },
-    { column: "person_id", note: "round-robin FK → contact (0 if none)" },
-    { column: "project_id", note: "round-robin FK → project (0 if none)" },
-    { column: "saleType_id / source_id", note: "first sale type/source from metadata" },
-    { column: "saledate", note: "today" },
-    { column: "status", note: "1 (Open)" },
-    { column: "probability_idx", note: "default probability from metadata" },
-    { column: "associate_id / group_idx", note: "current user from metadata" }
-  ]
+/** Fallback field suggestions used when the SuperOffice API is unreachable */
+const ENTITY_FIELD_FALLBACKS: Record<BuiltinEntityType, string[]> = {
+  company:  ["name", "phone", "email", "orgNr", "department"],
+  contact:  ["firstName", "lastName", "title", "phone", "mobile", "email"],
+  followUp: ["title", "description"],
+  project:  ["name", "number"],
+  sale:     ["heading", "amount"]
 };
 
 const ENTITY_ICONS: Record<string, string> = {
@@ -145,8 +122,8 @@ function uid(): string {
   return Math.random().toString(36).slice(2, 9);
 }
 
-function makeField(field = "", strategy: Strategy = "faker", fakerPath = ""): FieldState {
-  return { _id: uid(), field, strategy, fakerPath, value: "", list: "", fkEntity: "", fkSelect: "round-robin" };
+function makeField(field = "", strategy: Strategy = "faker", fakerPath = "", fieldCategory?: EntityFieldCategory): FieldState {
+  return { _id: uid(), field, strategy, fakerPath, value: "", list: "", fkEntity: "", fkSelect: "round-robin", mdoListId: null, mdoListType: "", mdoListName: "", fieldCategory };
 }
 
 function makeSecondaryTable(): SecondaryTableState {
@@ -203,7 +180,11 @@ function fromTemplate(template: TemplateDefinition): EntityState[] {
       value: f.value ?? "",
       list: f.list?.join(", ") ?? "",
       fkEntity: f.fkEntity ?? "",
-      fkSelect: (f.fkSelect ?? "round-robin") as FkSelect
+      fkSelect: (f.fkSelect ?? "round-robin") as FkSelect,
+      mdoListId: f.listId ?? null,
+      mdoListType: f.listType ?? "",
+      mdoListName: f.listName ?? "",
+      fieldCategory: f.fieldCategory
     })),
     secondaryTables: (e.secondaryTables ?? []).map((st) => ({
       _id: uid(),
@@ -219,7 +200,11 @@ function fromTemplate(template: TemplateDefinition): EntityState[] {
         value: f.value ?? "",
         list: f.list?.join(", ") ?? "",
         fkEntity: f.fkEntity ?? "",
-        fkSelect: (f.fkSelect ?? "round-robin") as FkSelect
+        fkSelect: (f.fkSelect ?? "round-robin") as FkSelect,
+        mdoListId: f.listId ?? null,
+        mdoListType: f.listType ?? "",
+        mdoListName: f.listName ?? "",
+        fieldCategory: f.fieldCategory
       }))
     })),
     expanded: false
@@ -228,13 +213,19 @@ function fromTemplate(template: TemplateDefinition): EntityState[] {
 
 function serializeFields(fields: FieldState[]) {
   return fields.filter((f) => f.field.trim()).map((f) => {
-    const base = { field: f.field.trim(), strategy: f.strategy };
+    const base = {
+      field: f.field.trim(),
+      strategy: f.strategy,
+      ...(f.fieldCategory && { fieldCategory: f.fieldCategory })
+    };
     if (f.strategy === "faker") return { ...base, fakerPath: f.fakerPath };
     if (f.strategy === "static") return { ...base, value: f.value };
     if (f.strategy === "list")
       return { ...base, list: f.list.split(",").map((s) => s.trim()).filter(Boolean) };
     if (f.strategy === "fk")
       return { ...base, fkEntity: f.fkEntity, fkSelect: f.fkSelect };
+    if (f.strategy === "mdolist")
+      return { ...base, ...(f.mdoListId != null && { listId: f.mdoListId }), listType: f.mdoListType, listName: f.mdoListName };
     return base; // sequence
   });
 }
@@ -302,6 +293,11 @@ export function TemplateForm({ template }: TemplateFormProps = {}) {
 
   const [name, setName] = useState(template?.name ?? "");
   const [description, setDescription] = useState(template?.description ?? "");
+
+  // Derive field-level errors from Zod's flatten().fieldErrors for inline display
+  const fieldErrors = typeof state.error === "object" && state.error !== null
+    ? state.error as Record<string, string[]>
+    : null;
   const [entities, setEntities] = useState<EntityState[]>(() =>
     template ? fromTemplate(template) : []
   );
@@ -313,6 +309,10 @@ export function TemplateForm({ template }: TemplateFormProps = {}) {
   const [dbModelLoading, setDbModelLoading] = useState(false);
   const [dbModelError, setDbModelError] = useState<string | null>(null);
 
+  const [mdoLists, setMdoLists] = useState<MdoListDef[]>([]);
+  const [entityFieldMap, setEntityFieldMap] = useState<Partial<Record<BuiltinEntityType, EntityFieldInfo[]>>>({});
+  const [fakerPaths, setFakerPaths] = useState<string[]>([]);
+
   useEffect(() => {
     if (mode !== "massops" || dbTables.length > 0) return;
     setDbModelLoading(true);
@@ -322,6 +322,30 @@ export function TemplateForm({ template }: TemplateFormProps = {}) {
       .catch((e: unknown) => setDbModelError(String(e)))
       .finally(() => setDbModelLoading(false));
   }, [mode, dbTables.length]);
+
+  useEffect(() => {
+    if (mdoLists.length > 0) return;
+    fetch("/api/metadata/lists")
+      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+      .then((d: { lists: MdoListDef[] }) => setMdoLists(d.lists))
+      .catch(() => { /* non-fatal — mdolist picker will be empty */ });
+  }, [mdoLists.length]);
+
+  useEffect(() => {
+    if (Object.keys(entityFieldMap).length > 0) return;
+    fetch("/api/metadata/entity-fields")
+      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+      .then((d: Record<string, EntityFieldInfo[]>) => setEntityFieldMap(d as Record<BuiltinEntityType, EntityFieldInfo[]>))
+      .catch(() => { /* non-fatal — falls back to ENTITY_FIELD_FALLBACKS */ });
+  }, [entityFieldMap]);
+
+  useEffect(() => {
+    if (fakerPaths.length > 0) return;
+    fetch("/api/metadata/faker-paths")
+      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+      .then((d: { paths: string[] }) => setFakerPaths(d.paths))
+      .catch(() => { /* non-fatal — faker path input still works as free text */ });
+  }, [fakerPaths.length]);
 
   const jsonPayload = useMemo(
     () => JSON.stringify(buildJson(name, description, mode, entities), null, 2),
@@ -531,8 +555,9 @@ export function TemplateForm({ template }: TemplateFormProps = {}) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Onboarding Burst"
-          className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-brand focus:outline-none"
+          className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm focus:outline-none ${fieldErrors?.name ? "border-rose-400 focus:border-rose-400" : "border-slate-200 focus:border-brand"}`}
         />
+        {fieldErrors?.name && <p className="mt-1 text-xs text-rose-500">{fieldErrors.name[0]}</p>}
       </label>
 
       <label className="block text-sm font-medium text-slate-700">
@@ -542,8 +567,9 @@ export function TemplateForm({ template }: TemplateFormProps = {}) {
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Creates demo company/contact data for pilot tenants."
-          className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-brand focus:outline-none"
+          className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm focus:outline-none ${fieldErrors?.description ? "border-rose-400 focus:border-rose-400" : "border-slate-200 focus:border-brand"}`}
         />
+        {fieldErrors?.description && <p className="mt-1 text-xs text-rose-500">{fieldErrors.description[0]}</p>}
       </label>
 
       {/* ── Mode selector ───────────────────────────────────────────────────── */}
@@ -650,8 +676,20 @@ export function TemplateForm({ template }: TemplateFormProps = {}) {
               tableFields={
                 mode === "massops" && !entity.builtinType
                   ? (dbTables.find((t) => t.name === entity.tableName)?.fields ?? [])
+                  : mode === "entity" && entity.builtinType
+                  ? (entityFieldMap[entity.builtinType] ?? []).length > 0
+                    ? (entityFieldMap[entity.builtinType] as EntityFieldInfo[]).map((f) => ({
+                        name: f.name,
+                        type: 0,
+                        description: f.mandatory ? "Required" : null,
+                        fieldCategory: f.fieldType,
+                        serviceTypeName: f.serviceTypeName
+                      }))
+                    : ENTITY_FIELD_FALLBACKS[entity.builtinType].map((n) => ({ name: n, type: 0, description: null }))
                   : undefined
               }
+              mdoLists={mdoLists}
+              fakerPaths={fakerPaths}
               onToggle={() => toggleEntity(entity._id)}
               onRemove={() => removeEntity(entity._id)}
               onChangeBuiltinType={(t) => changeBuiltinType(entity._id, t)}
@@ -671,11 +709,12 @@ export function TemplateForm({ template }: TemplateFormProps = {}) {
         </div>
       </div>
 
-      {state.error && (
+      {typeof state.error === "string" && (
+        <p className="text-sm text-rose-600">{state.error}</p>
+      )}
+      {fieldErrors && Object.keys(fieldErrors).some((k) => k !== "name" && k !== "description") && (
         <p className="text-sm text-rose-600">
-          {typeof state.error === "string"
-            ? state.error
-            : "Validation failed — check entity types and field strategies."}
+          Validation failed — check entity types and field strategies.
         </p>
       )}
       {state.success && template && (
@@ -699,6 +738,8 @@ interface EntityCardProps {
   entityNames: string[];
   mode: TemplateMode;
   tableFields?: DbModelField[];
+  mdoLists: MdoListDef[];
+  fakerPaths: string[];
   onToggle: () => void;
   onRemove: () => void;
   onChangeBuiltinType: (t: BuiltinEntityType | "") => void;
@@ -720,6 +761,8 @@ function EntityCard({
   entityNames,
   mode,
   tableFields,
+  mdoLists,
+  fakerPaths,
   onToggle,
   onRemove,
   onChangeBuiltinType,
@@ -843,23 +886,6 @@ function EntityCard({
             </label>
           </div>
 
-          {/* System fields annotation — builtin types only */}
-          {entity.builtinType && SYSTEM_FIELDS[entity.builtinType] && (
-            <details className="rounded-lg border border-slate-100 bg-slate-50/60">
-              <summary className="cursor-pointer select-none px-2.5 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-700">
-                System fields (auto-managed) · {SYSTEM_FIELDS[entity.builtinType].length}
-              </summary>
-              <ul className="divide-y divide-slate-100 px-2.5 pb-2 pt-1">
-                {SYSTEM_FIELDS[entity.builtinType].map((f) => (
-                  <li key={f.column} className="flex items-baseline gap-2 py-0.5">
-                    <code className="shrink-0 text-xs text-slate-700">{f.column}</code>
-                    <span className="text-xs text-slate-400">{f.note}</span>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
-
           {/* Field rows */}
           <div>
             {entity.fields.length > 0 && (
@@ -879,6 +905,8 @@ function EntityCard({
                   field={field}
                   entityNames={entityNames}
                   tableFields={tableFields}
+                  mdoLists={mdoLists}
+                  fakerPaths={fakerPaths}
                   onUpdate={(patch) => onUpdateField(field._id, patch)}
                   onRemove={() => onRemoveField(field._id)}
                 />
@@ -908,6 +936,8 @@ function EntityCard({
                 key={st._id}
                 st={st}
                 entityNames={entityNames}
+                mdoLists={mdoLists}
+                fakerPaths={fakerPaths}
                 onToggle={() => onToggleSecondaryTable(st._id)}
                 onRemove={() => onRemoveSecondaryTable(st._id)}
                 onUpdate={(patch) => onUpdateSecondaryTable(st._id, patch)}
@@ -928,6 +958,8 @@ function EntityCard({
 interface SecondaryTableCardProps {
   st: SecondaryTableState;
   entityNames: string[];
+  mdoLists: MdoListDef[];
+  fakerPaths: string[];
   onToggle: () => void;
   onRemove: () => void;
   onUpdate: (patch: Partial<SecondaryTableState>) => void;
@@ -939,6 +971,8 @@ interface SecondaryTableCardProps {
 function SecondaryTableCard({
   st,
   entityNames,
+  mdoLists,
+  fakerPaths,
   onToggle,
   onRemove,
   onUpdate,
@@ -1000,6 +1034,8 @@ function SecondaryTableCard({
                 key={field._id}
                 field={field}
                 entityNames={entityNames}
+                mdoLists={mdoLists}
+                fakerPaths={fakerPaths}
                 onUpdate={(patch) => onUpdateField(field._id, patch)}
                 onRemove={() => onRemoveField(field._id)}
               />
@@ -1022,11 +1058,13 @@ interface FieldRowProps {
   field: FieldState;
   entityNames: string[];
   tableFields?: DbModelField[];
+  mdoLists: MdoListDef[];
+  fakerPaths: string[];
   onUpdate: (patch: Partial<FieldState>) => void;
   onRemove: () => void;
 }
 
-function FieldRow({ field, entityNames, tableFields, onUpdate, onRemove }: FieldRowProps) {
+function FieldRow({ field, entityNames, tableFields, mdoLists, fakerPaths, onUpdate, onRemove }: FieldRowProps) {
   return (
     <div className="flex items-center gap-2">
       <div className="grid flex-1 grid-cols-[1fr_108px_1fr] gap-x-2">
@@ -1034,13 +1072,18 @@ function FieldRow({ field, entityNames, tableFields, onUpdate, onRemove }: Field
           <select
             aria-label="Field name"
             value={field.field}
-            onChange={(e) => onUpdate({ field: e.target.value })}
+            onChange={(e) => {
+              const selected = tableFields.find((f) => f.name === e.target.value);
+              const patch: Partial<FieldState> = { field: e.target.value, fieldCategory: selected?.fieldCategory };
+              if (selected?.fieldCategory === "service-object") patch.strategy = "mdolist";
+              onUpdate(patch);
+            }}
             className="rounded-lg border border-slate-200 bg-white px-2 py-1 font-mono text-xs text-slate-700 focus:border-brand focus:outline-none"
           >
             <option value="">— pick field —</option>
             {tableFields.map((f) => (
               <option key={f.name} value={f.name} title={f.description ?? undefined}>
-                {f.name}
+                {f.name}{f.fieldCategory === "service-object" ? " →id" : ""}
               </option>
             ))}
           </select>
@@ -1064,8 +1107,9 @@ function FieldRow({ field, entityNames, tableFields, onUpdate, onRemove }: Field
           <option value="list">list</option>
           <option value="sequence">sequence</option>
           <option value="fk">fk</option>
+          <option value="mdolist">MDO list</option>
         </select>
-        <StrategyValueInput field={field} entityNames={entityNames} onUpdate={onUpdate} />
+        <StrategyValueInput field={field} entityNames={entityNames} mdoLists={mdoLists} fakerPaths={fakerPaths} onUpdate={onUpdate} />
       </div>
       <button
         type="button"
@@ -1082,21 +1126,35 @@ function FieldRow({ field, entityNames, tableFields, onUpdate, onRemove }: Field
 function StrategyValueInput({
   field,
   entityNames,
+  mdoLists,
+  fakerPaths,
   onUpdate
 }: {
   field: FieldState;
   entityNames: string[];
+  mdoLists: MdoListDef[];
+  fakerPaths: string[];
   onUpdate: (patch: Partial<FieldState>) => void;
 }) {
+  const [listFilter, setListFilter] = useState("");
   if (field.strategy === "faker") {
+    const listId = `faker-${field._id}`;
     return (
-      <input
-        type="text"
-        value={field.fakerPath}
-        onChange={(e) => onUpdate({ fakerPath: e.target.value })}
-        placeholder="e.g. company.name"
-        className="rounded-lg border border-slate-200 px-2 py-1 font-mono text-xs text-slate-700 focus:border-brand focus:outline-none"
-      />
+      <>
+        <input
+          type="text"
+          value={field.fakerPath}
+          onChange={(e) => onUpdate({ fakerPath: e.target.value })}
+          placeholder="e.g. company.name"
+          list={listId}
+          className="rounded-lg border border-slate-200 px-2 py-1 font-mono text-xs text-slate-700 focus:border-brand focus:outline-none"
+        />
+        {fakerPaths.length > 0 && (
+          <datalist id={listId}>
+            {fakerPaths.map((p) => <option key={p} value={p} />)}
+          </datalist>
+        )}
+      </>
     );
   }
   if (field.strategy === "static") {
@@ -1143,6 +1201,48 @@ function StrategyValueInput({
         >
           <option value="round-robin">rr</option>
           <option value="random">rand</option>
+        </select>
+      </div>
+    );
+  }
+  if (field.strategy === "mdolist") {
+    const filtered = listFilter
+      ? mdoLists.filter((l) => l.name.toLowerCase().includes(listFilter.toLowerCase()))
+      : mdoLists;
+    return (
+      <div className="flex flex-col gap-1">
+        <div className="flex gap-1">
+          <input
+            type="text"
+            value={listFilter}
+            onChange={(e) => setListFilter(e.target.value)}
+            placeholder="Filter lists…"
+            className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-700 focus:border-brand focus:outline-none"
+          />
+          {listFilter && (
+            <button
+              type="button"
+              onClick={() => setListFilter("")}
+              className="shrink-0 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:border-slate-300 hover:text-slate-700"
+              title="Show all"
+            >
+              Show all
+            </button>
+          )}
+        </div>
+        <select
+          aria-label="MDO list"
+          value={field.mdoListId ?? ""}
+          onChange={(e) => {
+            const selected = mdoLists.find((l) => l.id === Number(e.target.value));
+            if (selected) onUpdate({ mdoListId: selected.id, mdoListType: selected.listType, mdoListName: selected.name });
+          }}
+          className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-700 focus:border-brand focus:outline-none"
+        >
+          <option value="">— pick list —</option>
+          {filtered.map((l) => (
+            <option key={l.id} value={l.id}>{l.name}</option>
+          ))}
         </select>
       </div>
     );
