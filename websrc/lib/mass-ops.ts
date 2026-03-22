@@ -384,7 +384,8 @@ async function insertDeclarativeSecondaryRows(
   rowIndexOffset = 0
 ): Promise<void> {
   for (const stDef of entity.secondaryTables ?? []) {
-    const columns = [stDef.primaryKey, stDef.parentFkColumn, ...stDef.fields.map((f) => f.field)];
+    // do not insert primary key column; it will be auto-generated. parent FK column must be included and is expected to be named "ParentId" or similar.
+    const columns = [stDef.parentFkColumn, ...stDef.fields.map((f) => f.field)];
     const allData: string[][] = [];
 
     for (let i = 0; i < parentIds.length; i++) {
@@ -393,7 +394,8 @@ async function insertDeclarativeSecondaryRows(
       const ctx: InsertContext = { insertedIds, metadata, rowIndex: rowIndexOffset + i, locale };
       const f = buildFaker(locale);
       const rowValues: string[] = [
-        "0",               // primary key — triggers INSERT
+        // do not insert primary key column; it will be auto-generated. 
+        // "0",               // primary key — triggers INSERT
         String(parentId)   // parent FK
       ];
       for (const fieldRule of stDef.fields) {

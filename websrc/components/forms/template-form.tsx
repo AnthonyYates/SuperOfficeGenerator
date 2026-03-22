@@ -1,11 +1,25 @@
 "use client";
 
 import { useFormState } from "react-dom";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { createTemplateAction, updateTemplateAction } from "@/app/actions";
-import type { BuiltinEntityType, TemplateDefinition } from "@/lib/types";
+import type { BuiltinEntityType, TemplateDefinition, TemplateMode } from "@/lib/types";
 import { LocalePicker } from "@/components/ui/locale-picker";
+
+// ─── DB model types (mirrored from lib/db-model.ts for client use) ────────────
+
+interface DbModelField {
+  name: string;
+  type: number;
+  description: string | null;
+}
+
+interface DbModelTable {
+  name: string;
+  primaryKey: string;
+  fields: DbModelField[];
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -225,10 +239,27 @@ function serializeFields(fields: FieldState[]) {
   });
 }
 
-function buildJson(name: string, description: string, entities: EntityState[]) {
+function makeMassOpsEntity(tableName: string, primaryKey: string): EntityState {
+  return {
+    _id: uid(),
+    name: tableName,
+    builtinType: "",
+    tableName,
+    primaryKey,
+    quantityDefault: 10,
+    localeFallbacks: "en",
+    dependsOn: "",
+    fields: [],
+    secondaryTables: [],
+    expanded: true
+  };
+}
+
+function buildJson(name: string, description: string, mode: TemplateMode, entities: EntityState[]) {
   return {
     name,
     description,
+    mode,
     schemaVersion: 2,
     entities: entities.map((e) => {
       const base = {
@@ -275,9 +306,26 @@ export function TemplateForm({ template }: TemplateFormProps = {}) {
     template ? fromTemplate(template) : []
   );
 
+  const [mode, setMode] = useState<TemplateMode>(template?.mode ?? "entity");
+  const modeLocked = entities.length > 0;
+
+  const [dbTables, setDbTables] = useState<DbModelTable[]>([]);
+  const [dbModelLoading, setDbModelLoading] = useState(false);
+  const [dbModelError, setDbModelError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (mode !== "massops" || dbTables.length > 0) return;
+    setDbModelLoading(true);
+    fetch("/api/metadata/db-model")
+      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+      .then((d: { tables: DbModelTable[] }) => setDbTables(d.tables))
+      .catch((e: unknown) => setDbModelError(String(e)))
+      .finally(() => setDbModelLoading(false));
+  }, [mode, dbTables.length]);
+
   const jsonPayload = useMemo(
-    () => JSON.stringify(buildJson(name, description, entities), null, 2),
-    [name, description, entities]
+    () => JSON.stringify(buildJson(name, description, mode, entities), null, 2),
+    [name, description, mode, entities]
   );
 
   // Names of all current entities (for FK / dependsOn pickers)
@@ -290,8 +338,10 @@ export function TemplateForm({ template }: TemplateFormProps = {}) {
     else setEntities((prev) => [...prev, makeCustomEntity()]);
   }
 
-  function addCustomEntity() {
-    setEntities((prev) => [...prev, makeCustomEntity()]);
+  function addMassOpsEntity(tableName: string) {
+    const tableInfo = dbTables.find((t) => t.name === tableName);
+    if (!tableInfo) return;
+    setEntities((prev) => [...prev, makeMassOpsEntity(tableInfo.name, tableInfo.primaryKey)]);
   }
 
   function removeEntity(id: string) {
@@ -496,30 +546,97 @@ export function TemplateForm({ template }: TemplateFormProps = {}) {
         />
       </label>
 
+      {/* ── Mode selector ───────────────────────────────────────────────────── */}
+      <div className="space-y-2">
+        <p className="text-sm font-medium text-slate-700">
+          Template mode
+          {modeLocked && (
+            <span className="ml-2 text-xs font-normal text-slate-400">
+              — locked (remove all entities to change)
+            </span>
+          )}
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${mode === "entity" ? "border-brand bg-brand/5" : "border-slate-200"} ${modeLocked ? "cursor-not-allowed opacity-60" : ""}`}>
+            <input
+              type="radio"
+              name="templateMode"
+              value="entity"
+              checked={mode === "entity"}
+              disabled={modeLocked}
+              onChange={() => setMode("entity")}
+              className="mt-0.5 accent-brand"
+            />
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Entity agents</p>
+              <p className="text-xs text-slate-500">
+                5 builtin types via ContactAgent / PersonAgent etc. Works with any OIDC token.
+              </p>
+            </div>
+          </label>
+          <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${mode === "massops" ? "border-violet-400 bg-violet-50" : "border-slate-200"} ${modeLocked ? "cursor-not-allowed opacity-60" : ""}`}>
+            <input
+              type="radio"
+              name="templateMode"
+              value="massops"
+              checked={mode === "massops"}
+              disabled={modeLocked}
+              onChange={() => setMode("massops")}
+              className="mt-0.5 accent-violet-600"
+            />
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Mass operations</p>
+              <p className="text-xs text-slate-500">
+                Bulk-inserts via DatabaseTableAgent. Custom y_* tables supported. Requires System Design access.
+              </p>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      {/* ── Entity list ─────────────────────────────────────────────────────── */}
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
           <p className="text-sm font-medium text-slate-700">Entities</p>
-          <div className="flex gap-2">
+
+          {mode === "entity" && (
             <button
               type="button"
               onClick={addBuiltinEntity}
               className="rounded-lg border border-brand px-2.5 py-1 text-xs font-medium text-brand hover:bg-brand/5"
             >
-              + Builtin
+              + Add entity
             </button>
-            <button
-              type="button"
-              onClick={addCustomEntity}
-              className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
-            >
-              + Custom table
-            </button>
-          </div>
+          )}
+
+          {mode === "massops" && (
+            <div className="flex items-center gap-2">
+              {dbModelLoading && (
+                <span className="text-xs text-slate-400">Loading DB model…</span>
+              )}
+              {dbModelError && (
+                <span className="text-xs text-rose-500">Failed to load: {dbModelError}</span>
+              )}
+              <select
+                aria-label="Select table to add"
+                onChange={(e) => { if (e.target.value) { addMassOpsEntity(e.target.value); e.currentTarget.value = ""; } }}
+                disabled={dbModelLoading || dbTables.length === 0}
+                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 focus:border-brand focus:outline-none disabled:opacity-50"
+              >
+                <option value="">+ Add table</option>
+                {dbTables.map((t) => (
+                  <option key={t.name} value={t.name}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {entities.length === 0 && (
           <p className="rounded-xl border border-dashed border-slate-200 py-6 text-center text-xs text-slate-400">
-            No entities yet — click &ldquo;+ Builtin&rdquo; or &ldquo;+ Custom table&rdquo; to begin.
+            {mode === "entity"
+              ? 'No entities yet — click "+ Add entity" to begin.'
+              : 'No tables yet — select a table from the dropdown above.'}
           </p>
         )}
 
@@ -529,6 +646,12 @@ export function TemplateForm({ template }: TemplateFormProps = {}) {
               key={entity._id}
               entity={entity}
               entityNames={entityNames}
+              mode={mode}
+              tableFields={
+                mode === "massops" && !entity.builtinType
+                  ? (dbTables.find((t) => t.name === entity.tableName)?.fields ?? [])
+                  : undefined
+              }
               onToggle={() => toggleEntity(entity._id)}
               onRemove={() => removeEntity(entity._id)}
               onChangeBuiltinType={(t) => changeBuiltinType(entity._id, t)}
@@ -574,6 +697,8 @@ export function TemplateForm({ template }: TemplateFormProps = {}) {
 interface EntityCardProps {
   entity: EntityState;
   entityNames: string[];
+  mode: TemplateMode;
+  tableFields?: DbModelField[];
   onToggle: () => void;
   onRemove: () => void;
   onChangeBuiltinType: (t: BuiltinEntityType | "") => void;
@@ -593,6 +718,8 @@ interface EntityCardProps {
 function EntityCard({
   entity,
   entityNames,
+  mode,
+  tableFields,
   onToggle,
   onRemove,
   onChangeBuiltinType,
@@ -622,18 +749,19 @@ function EntityCard({
         </button>
         <span className="text-base leading-none">{icon}</span>
 
-        {/* Builtin type selector */}
-        <select
-          aria-label="Builtin entity type"
-          value={entity.builtinType}
-          onChange={(e) => onChangeBuiltinType(e.target.value as BuiltinEntityType | "")}
-          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 focus:border-brand focus:outline-none"
-        >
-          {BUILTIN_TYPES.map((t) => (
-            <option key={t} value={t}>{t}</option>
-          ))}
-          <option value="">— custom —</option>
-        </select>
+        {/* Builtin type selector — only shown in entity mode */}
+        {mode === "entity" && (
+          <select
+            aria-label="Builtin entity type"
+            value={entity.builtinType}
+            onChange={(e) => onChangeBuiltinType(e.target.value as BuiltinEntityType | "")}
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 focus:border-brand focus:outline-none"
+          >
+            {BUILTIN_TYPES.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        )}
 
         {/* Entity name */}
         <input
@@ -750,6 +878,7 @@ function EntityCard({
                   key={field._id}
                   field={field}
                   entityNames={entityNames}
+                  tableFields={tableFields}
                   onUpdate={(patch) => onUpdateField(field._id, patch)}
                   onRemove={() => onRemoveField(field._id)}
                 />
@@ -892,21 +1021,38 @@ function SecondaryTableCard({
 interface FieldRowProps {
   field: FieldState;
   entityNames: string[];
+  tableFields?: DbModelField[];
   onUpdate: (patch: Partial<FieldState>) => void;
   onRemove: () => void;
 }
 
-function FieldRow({ field, entityNames, onUpdate, onRemove }: FieldRowProps) {
+function FieldRow({ field, entityNames, tableFields, onUpdate, onRemove }: FieldRowProps) {
   return (
     <div className="flex items-center gap-2">
       <div className="grid flex-1 grid-cols-[1fr_108px_1fr] gap-x-2">
-        <input
-          type="text"
-          value={field.field}
-          onChange={(e) => onUpdate({ field: e.target.value })}
-          placeholder="field name"
-          className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-700 focus:border-brand focus:outline-none"
-        />
+        {tableFields ? (
+          <select
+            aria-label="Field name"
+            value={field.field}
+            onChange={(e) => onUpdate({ field: e.target.value })}
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1 font-mono text-xs text-slate-700 focus:border-brand focus:outline-none"
+          >
+            <option value="">— pick field —</option>
+            {tableFields.map((f) => (
+              <option key={f.name} value={f.name} title={f.description ?? undefined}>
+                {f.name}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            type="text"
+            value={field.field}
+            onChange={(e) => onUpdate({ field: e.target.value })}
+            placeholder="field name"
+            className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-700 focus:border-brand focus:outline-none"
+          />
+        )}
         <select
           aria-label="Field strategy"
           value={field.strategy}

@@ -67,6 +67,8 @@ _ReSharper*/
 # Publish output
 publish/
 
+websrc/research/
+
 # Azure Functions local settings
 local.settings.json
 

@@ -58,7 +58,6 @@ export interface JobRequest {
   counts: Record<string, number>;
   locales: string[];
   createdBy: string;
-  apiMode: JobManifest["apiMode"];
 }
 
 /** Creates a job manifest with status "queued" and persists it. Execution happens in the SSE route. */
@@ -75,7 +74,7 @@ export async function enqueueJob(request: JobRequest): Promise<JobManifest> {
     templateId: template.id,
     locales: request.locales.length ? request.locales : collectTemplateLocales(template),
     requestedCounts: request.counts,
-    apiMode: request.apiMode,
+    apiMode: template.mode,   // derived from template — not a caller choice
     status: "queued",
     createdBy: request.createdBy,
     createdAt: new Date().toISOString(),

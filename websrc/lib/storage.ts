@@ -4,6 +4,7 @@ import { faker } from "@faker-js/faker";
 import { prisma } from "./db";
 import type {
   TemplateDefinition,
+  TemplateMode,
   EntityDefinition,
   TemplateEntitySettings,
   BuiltinEntityType,
@@ -63,6 +64,7 @@ function rowToTemplate(row: {
   id: string;
   name: string;
   description: string;
+  mode: string;
   entities: string;
   schemaVersion: number;
   createdBy: string;
@@ -73,6 +75,7 @@ function rowToTemplate(row: {
     id: row.id,
     name: row.name,
     description: row.description,
+    mode: (row.mode as TemplateMode) ?? "entity",
     entities: normalizeEntities(rawEntities, row.schemaVersion),
     schemaVersion: Math.max(row.schemaVersion, 2), // always expose as v2 after normalisation
     createdBy: row.createdBy,
@@ -118,6 +121,7 @@ const seedTemplate: TemplateDefinition = {
   id: "tmpl-onboarding",
   name: "Onboarding Burst",
   description: "Creates demo company/contact/follow-up data for pilot tenants.",
+  mode: "entity",
   schemaVersion: 2,
   createdBy: "system",
   updatedAt: new Date().toISOString(),
@@ -176,6 +180,7 @@ export async function readTemplates(): Promise<TemplateDefinition[]> {
         id: seedTemplate.id,
         name: seedTemplate.name,
         description: seedTemplate.description,
+        mode: seedTemplate.mode,
         entities: serialize(seedTemplate.entities),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         schemaVersion: seedTemplate.schemaVersion as any,
@@ -198,6 +203,7 @@ export async function writeTemplates(templates: TemplateDefinition[]): Promise<v
           id: t.id,
           name: t.name,
           description: t.description,
+          mode: t.mode,
           entities: serialize(t.entities),
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           schemaVersion: t.schemaVersion as any,
@@ -207,6 +213,7 @@ export async function writeTemplates(templates: TemplateDefinition[]): Promise<v
         update: {
           name: t.name,
           description: t.description,
+          mode: t.mode,
           entities: serialize(t.entities),
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           schemaVersion: t.schemaVersion as any,

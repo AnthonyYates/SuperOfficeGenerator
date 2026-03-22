@@ -25,6 +25,7 @@ const secondaryTableSchema = z.object({
 const templateSchema = z.object({
   name: z.string().min(3),
   description: z.string().min(5),
+  mode: z.enum(["entity", "massops"]).default("entity"),
   schemaVersion: z.number().int().default(2),
   entities: z.array(
     z.object({
@@ -44,8 +45,7 @@ const templateSchema = z.object({
 const jobSchema = z.object({
   templateId: z.string(),
   locales: z.array(z.string()).optional(),
-  counts: z.record(z.string(), z.coerce.number().int().min(1)).optional(),
-  apiMode: z.enum(["entity", "massops"]).default("entity")
+  counts: z.record(z.string(), z.coerce.number().int().min(1)).optional()
 });
 
 export async function createTemplateAction(
@@ -145,8 +145,7 @@ export async function createJobAction(
       .split(",")
       .map((entry) => entry.trim())
       .filter(Boolean),
-    counts,
-    apiMode: formData.get("apiMode") ?? "entity"
+    counts
   });
 
   if (!payload.success) {
@@ -157,8 +156,7 @@ export async function createJobAction(
     templateId: payload.data.templateId,
     locales: payload.data.locales ?? [],
     counts: payload.data.counts ?? {},
-    createdBy: "operator",
-    apiMode: payload.data.apiMode
+    createdBy: "operator"
   });
 
   // Redirect to the job detail page where the SSE stream will start execution

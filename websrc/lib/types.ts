@@ -63,10 +63,13 @@ export interface TemplateEntitySettings {
 // Template
 // ---------------------------------------------------------------------------
 
+export type TemplateMode = "entity" | "massops";
+
 export interface TemplateDefinition {
   id: string;
   name: string;
   description: string;
+  mode: TemplateMode;
   entities: EntityDefinition[];
   /** 1 = legacy TemplateEntitySettings[], 2 = EntityDefinition[] */
   schemaVersion: number;

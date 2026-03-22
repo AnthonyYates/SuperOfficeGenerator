@@ -71,6 +71,14 @@ export function JobForm({ templates }: JobFormProps) {
             ))}
           </select>
         </label>
+        {selectedTemplate && (
+          <p className="mt-1 text-xs text-slate-400">
+            Mode:{" "}
+            <span className={`font-medium ${selectedTemplate.mode === "massops" ? "text-violet-600" : "text-sky-600"}`}>
+              {selectedTemplate.mode === "massops" ? "mass operations" : "entity agents"}
+            </span>
+          </p>
+        )}
       </div>
       <div>
         <p className="text-sm font-medium text-slate-700 mb-1">Locales</p>
@@ -80,43 +88,6 @@ export function JobForm({ templates }: JobFormProps) {
           onChange={setLocales}
           disabled={isDisabled}
         />
-      </div>
-      <div className="space-y-2">
-        <p className="text-sm font-medium text-slate-700">API mode</p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3 has-[:checked]:border-brand has-[:checked]:bg-brand/5">
-            <input
-              type="radio"
-              name="apiMode"
-              value="entity"
-              defaultChecked
-              disabled={isDisabled}
-              className="mt-0.5 accent-brand"
-            />
-            <div>
-              <p className="text-sm font-semibold text-slate-900">Entity agents</p>
-              <p className="text-xs text-slate-500">
-                Creates each record via ContactAgent / PersonAgent etc. Works with any OIDC token.
-              </p>
-            </div>
-          </label>
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3 has-[:checked]:border-brand has-[:checked]:bg-brand/5">
-            <input
-              type="radio"
-              name="apiMode"
-              value="massops"
-              disabled={isDisabled}
-              className="mt-0.5 accent-brand"
-            />
-            <div>
-              <p className="text-sm font-semibold text-slate-900">Mass operations</p>
-              <p className="text-xs text-slate-500">
-                Bulk-inserts via DatabaseTableAgent in 500-row batches. Requires System Design
-                access.
-              </p>
-            </div>
-          </label>
-        </div>
       </div>
       <div className="space-y-2">
         <p className="text-sm font-medium text-slate-700">

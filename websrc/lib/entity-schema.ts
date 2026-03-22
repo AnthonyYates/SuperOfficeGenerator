@@ -429,7 +429,7 @@ export function resolveSchema(entity: EntityDefinition): EntitySchema {
   if (!entity.tableName || !entity.primaryKey) {
     throw new Error(`Custom entity "${entity.name}" is missing tableName or primaryKey`);
   }
-  const columns = [entity.primaryKey, ...entity.fields.map((f) => f.field)];
+  const columns = [...entity.fields.map((f) => f.field)];
   const fieldMap: Record<string, string> = {};
   for (const f of entity.fields) fieldMap[f.field] = f.field;
 
