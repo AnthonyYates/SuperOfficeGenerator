@@ -4,7 +4,6 @@ import { faker } from "@faker-js/faker";
 import { prisma } from "./db";
 import type {
   TemplateDefinition,
-  TemplateMode,
   EntityDefinition,
   TemplateEntitySettings,
   BuiltinEntityType,
@@ -75,7 +74,7 @@ function rowToTemplate(row: {
     id: row.id,
     name: row.name,
     description: row.description,
-    mode: (row.mode as TemplateMode) ?? "entity",
+    mode: (row.mode as "massops") ?? "massops",
     entities: normalizeEntities(rawEntities, row.schemaVersion),
     schemaVersion: Math.max(row.schemaVersion, 2), // always expose as v2 after normalisation
     createdBy: row.createdBy,
@@ -121,7 +120,7 @@ const seedTemplate: TemplateDefinition = {
   id: "tmpl-onboarding",
   name: "Onboarding Burst",
   description: "Creates demo company/contact/follow-up data for pilot tenants.",
-  mode: "entity",
+  mode: "massops",
   schemaVersion: 2,
   createdBy: "system",
   updatedAt: new Date().toISOString(),

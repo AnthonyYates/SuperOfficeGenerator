@@ -77,13 +77,11 @@ export interface TemplateEntitySettings {
 // Template
 // ---------------------------------------------------------------------------
 
-export type TemplateMode = "entity" | "massops";
-
 export interface TemplateDefinition {
   id: string;
   name: string;
   description: string;
-  mode: TemplateMode;
+  mode: "massops";
   entities: EntityDefinition[];
   /** 1 = legacy TemplateEntitySettings[], 2 = EntityDefinition[] */
   schemaVersion: number;
@@ -120,8 +118,6 @@ export type JobPhaseEvent =
   | { type: "job_done"; status: JobStatus; metrics: JobMetricSummary }
   | { type: "error"; message: string };
 
-export type JobApiMode = "entity" | "massops";
-
 export interface JobPhaseResult {
   success: number;
   failed: number;
@@ -132,7 +128,7 @@ export interface JobManifest {
   templateId: string;
   locales: LocaleCode[];
   requestedCounts: Record<string, number>;
-  apiMode: JobApiMode;
+  apiMode: "massops";
   status: JobStatus;
   createdBy: string;
   createdAt: string;
