@@ -74,7 +74,7 @@ function rowToTemplate(row: {
     id: row.id,
     name: row.name,
     description: row.description,
-    mode: (row.mode as "massops") ?? "massops",
+    mode: "massops",
     entities: normalizeEntities(rawEntities, row.schemaVersion),
     schemaVersion: Math.max(row.schemaVersion, 2), // always expose as v2 after normalisation
     createdBy: row.createdBy,
