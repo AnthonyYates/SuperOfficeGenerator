@@ -4,8 +4,7 @@ import { useFormState } from "react-dom";
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { createTemplateAction, updateTemplateAction } from "@/app/actions";
-import type { BuiltinEntityType, EntityFieldCategory, TemplateDefinition, TemplateMode } from "@/lib/types";
-import type { EntityFieldInfo } from "@/lib/metadata";
+import type { BuiltinEntityType, EntityFieldCategory, TemplateDefinition } from "@/lib/types";
 import { LocalePicker } from "@/components/ui/locale-picker";
 
 // ─── DB model types (mirrored from lib/db-model.ts for client use) ────────────
@@ -78,42 +77,12 @@ interface EntityState {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const BUILTIN_TYPES: BuiltinEntityType[] = ["company", "contact", "followUp", "project", "sale"];
-
-/** Fallback field suggestions used when the SuperOffice API is unreachable */
-const ENTITY_FIELD_FALLBACKS: Record<BuiltinEntityType, string[]> = {
-  company:  ["name", "phone", "email", "orgNr", "department"],
-  contact:  ["firstName", "lastName", "title", "phone", "mobile", "email"],
-  followUp: ["title", "description"],
-  project:  ["name", "number"],
-  sale:     ["heading", "amount"]
-};
-
 const ENTITY_ICONS: Record<string, string> = {
   company: "🏢",
   contact: "👤",
   followUp: "📅",
   project: "📋",
   sale: "💰"
-};
-
-const DEFAULT_FIELDS: Record<BuiltinEntityType, Array<{ field: string; fakerPath: string }>> = {
-  company: [
-    { field: "name", fakerPath: "company.name" },
-    { field: "phone", fakerPath: "phone.number" },
-    { field: "email", fakerPath: "internet.email" }
-  ],
-  contact: [
-    { field: "firstName", fakerPath: "person.firstName" },
-    { field: "lastName", fakerPath: "person.lastName" },
-    { field: "mobile", fakerPath: "phone.number" }
-  ],
-  followUp: [{ field: "title", fakerPath: "lorem.words" }],
-  project: [{ field: "name", fakerPath: "commerce.productName" }],
-  sale: [
-    { field: "heading", fakerPath: "commerce.productName" },
-    { field: "amount", fakerPath: "finance.amount" }
-  ]
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -128,38 +97,6 @@ function makeField(field = "", strategy: Strategy = "faker", fakerPath = "", fie
 
 function makeSecondaryTable(): SecondaryTableState {
   return { _id: uid(), tableName: "", primaryKey: "", parentFkColumn: "", fields: [], expanded: true };
-}
-
-function makeBuiltinEntity(builtinType: BuiltinEntityType): EntityState {
-  return {
-    _id: uid(),
-    name: builtinType,
-    builtinType,
-    tableName: "",
-    primaryKey: "",
-    quantityDefault: 10,
-    localeFallbacks: "en",
-    dependsOn: "",
-    fields: DEFAULT_FIELDS[builtinType].map((f) => makeField(f.field, "faker", f.fakerPath)),
-    secondaryTables: [],
-    expanded: true
-  };
-}
-
-function makeCustomEntity(): EntityState {
-  return {
-    _id: uid(),
-    name: "",
-    builtinType: "",
-    tableName: "",
-    primaryKey: "",
-    quantityDefault: 10,
-    localeFallbacks: "en",
-    dependsOn: "",
-    fields: [],
-    secondaryTables: [],
-    expanded: true
-  };
 }
 
 function fromTemplate(template: TemplateDefinition): EntityState[] {
@@ -246,11 +183,11 @@ function makeMassOpsEntity(tableName: string, primaryKey: string): EntityState {
   };
 }
 
-function buildJson(name: string, description: string, mode: TemplateMode, entities: EntityState[]) {
+function buildJson(name: string, description: string, entities: EntityState[]) {
   return {
     name,
     description,
-    mode,
+    mode: "massops" as const,
     schemaVersion: 2,
     entities: entities.map((e) => {
       const base = {
@@ -302,26 +239,22 @@ export function TemplateForm({ template }: TemplateFormProps = {}) {
     template ? fromTemplate(template) : []
   );
 
-  const [mode, setMode] = useState<TemplateMode>(template?.mode ?? "entity");
-  const modeLocked = entities.length > 0;
-
   const [dbTables, setDbTables] = useState<DbModelTable[]>([]);
   const [dbModelLoading, setDbModelLoading] = useState(false);
   const [dbModelError, setDbModelError] = useState<string | null>(null);
 
   const [mdoLists, setMdoLists] = useState<MdoListDef[]>([]);
-  const [entityFieldMap, setEntityFieldMap] = useState<Partial<Record<BuiltinEntityType, EntityFieldInfo[]>>>({});
   const [fakerPaths, setFakerPaths] = useState<string[]>([]);
 
   useEffect(() => {
-    if (mode !== "massops" || dbTables.length > 0) return;
+    if (dbTables.length > 0) return;
     setDbModelLoading(true);
     fetch("/api/metadata/db-model")
       .then((r) => r.ok ? r.json() : Promise.reject(r.status))
       .then((d: { tables: DbModelTable[] }) => setDbTables(d.tables))
       .catch((e: unknown) => setDbModelError(String(e)))
       .finally(() => setDbModelLoading(false));
-  }, [mode, dbTables.length]);
+  }, [dbTables.length]);
 
   useEffect(() => {
     if (mdoLists.length > 0) return;
@@ -332,14 +265,6 @@ export function TemplateForm({ template }: TemplateFormProps = {}) {
   }, [mdoLists.length]);
 
   useEffect(() => {
-    if (Object.keys(entityFieldMap).length > 0) return;
-    fetch("/api/metadata/entity-fields")
-      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
-      .then((d: Record<string, EntityFieldInfo[]>) => setEntityFieldMap(d as Record<BuiltinEntityType, EntityFieldInfo[]>))
-      .catch(() => { /* non-fatal — falls back to ENTITY_FIELD_FALLBACKS */ });
-  }, [entityFieldMap]);
-
-  useEffect(() => {
     if (fakerPaths.length > 0) return;
     fetch("/api/metadata/faker-paths")
       .then((r) => r.ok ? r.json() : Promise.reject(r.status))
@@ -348,19 +273,12 @@ export function TemplateForm({ template }: TemplateFormProps = {}) {
   }, [fakerPaths.length]);
 
   const jsonPayload = useMemo(
-    () => JSON.stringify(buildJson(name, description, mode, entities), null, 2),
-    [name, description, mode, entities]
+    () => JSON.stringify(buildJson(name, description, entities), null, 2),
+    [name, description, entities]
   );
 
   // Names of all current entities (for FK / dependsOn pickers)
   const entityNames = useMemo(() => entities.map((e) => e.name.trim()).filter(Boolean), [entities]);
-
-  function addBuiltinEntity() {
-    const usedBuiltins = new Set(entities.map((e) => e.builtinType).filter(Boolean));
-    const next = BUILTIN_TYPES.find((t) => !usedBuiltins.has(t));
-    if (next) setEntities((prev) => [...prev, makeBuiltinEntity(next)]);
-    else setEntities((prev) => [...prev, makeCustomEntity()]);
-  }
 
   function addMassOpsEntity(tableName: string) {
     const tableInfo = dbTables.find((t) => t.name === tableName);
@@ -378,23 +296,6 @@ export function TemplateForm({ template }: TemplateFormProps = {}) {
 
   function updateEntity(id: string, patch: Partial<EntityState>) {
     setEntities((prev) => prev.map((e) => (e._id === id ? { ...e, ...patch } : e)));
-  }
-
-  function changeBuiltinType(id: string, builtinType: BuiltinEntityType | "") {
-    setEntities((prev) =>
-      prev.map((e) => {
-        if (e._id !== id) return e;
-        if (builtinType === "") {
-          return { ...e, builtinType: "", fields: [] };
-        }
-        return {
-          ...e,
-          builtinType,
-          name: e.name === e.builtinType || !e.name ? builtinType : e.name,
-          fields: DEFAULT_FIELDS[builtinType].map((f) => makeField(f.field, "faker", f.fakerPath))
-        };
-      })
-    );
   }
 
   function addField(entityId: string) {
@@ -572,71 +473,12 @@ export function TemplateForm({ template }: TemplateFormProps = {}) {
         {fieldErrors?.description && <p className="mt-1 text-xs text-rose-500">{fieldErrors.description[0]}</p>}
       </label>
 
-      {/* ── Mode selector ───────────────────────────────────────────────────── */}
-      <div className="space-y-2">
-        <p className="text-sm font-medium text-slate-700">
-          Template mode
-          {modeLocked && (
-            <span className="ml-2 text-xs font-normal text-slate-400">
-              — locked (remove all entities to change)
-            </span>
-          )}
-        </p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${mode === "entity" ? "border-brand bg-brand/5" : "border-slate-200"} ${modeLocked ? "cursor-not-allowed opacity-60" : ""}`}>
-            <input
-              type="radio"
-              name="templateMode"
-              value="entity"
-              checked={mode === "entity"}
-              disabled={modeLocked}
-              onChange={() => setMode("entity")}
-              className="mt-0.5 accent-brand"
-            />
-            <div>
-              <p className="text-sm font-semibold text-slate-900">Entity agents</p>
-              <p className="text-xs text-slate-500">
-                5 builtin types via ContactAgent / PersonAgent etc. Works with any OIDC token.
-              </p>
-            </div>
-          </label>
-          <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${mode === "massops" ? "border-violet-400 bg-violet-50" : "border-slate-200"} ${modeLocked ? "cursor-not-allowed opacity-60" : ""}`}>
-            <input
-              type="radio"
-              name="templateMode"
-              value="massops"
-              checked={mode === "massops"}
-              disabled={modeLocked}
-              onChange={() => setMode("massops")}
-              className="mt-0.5 accent-violet-600"
-            />
-            <div>
-              <p className="text-sm font-semibold text-slate-900">Mass operations</p>
-              <p className="text-xs text-slate-500">
-                Bulk-inserts via DatabaseTableAgent. Custom y_* tables supported. Requires System Design access.
-              </p>
-            </div>
-          </label>
-        </div>
-      </div>
-
       {/* ── Entity list ─────────────────────────────────────────────────────── */}
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
           <p className="text-sm font-medium text-slate-700">Entities</p>
 
-          {mode === "entity" && (
-            <button
-              type="button"
-              onClick={addBuiltinEntity}
-              className="rounded-lg border border-brand px-2.5 py-1 text-xs font-medium text-brand hover:bg-brand/5"
-            >
-              + Add entity
-            </button>
-          )}
-
-          {mode === "massops" && (
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
               {dbModelLoading && (
                 <span className="text-xs text-slate-400">Loading DB model…</span>
               )}
@@ -655,14 +497,11 @@ export function TemplateForm({ template }: TemplateFormProps = {}) {
                 ))}
               </select>
             </div>
-          )}
         </div>
 
         {entities.length === 0 && (
           <p className="rounded-xl border border-dashed border-slate-200 py-6 text-center text-xs text-slate-400">
-            {mode === "entity"
-              ? 'No entities yet — click "+ Add entity" to begin.'
-              : 'No tables yet — select a table from the dropdown above.'}
+            No tables yet — select a table from the dropdown above.
           </p>
         )}
 
@@ -672,27 +511,15 @@ export function TemplateForm({ template }: TemplateFormProps = {}) {
               key={entity._id}
               entity={entity}
               entityNames={entityNames}
-              mode={mode}
               tableFields={
-                mode === "massops" && !entity.builtinType
+                !entity.builtinType
                   ? (dbTables.find((t) => t.name === entity.tableName)?.fields ?? [])
-                  : mode === "entity" && entity.builtinType
-                  ? (entityFieldMap[entity.builtinType] ?? []).length > 0
-                    ? (entityFieldMap[entity.builtinType] as EntityFieldInfo[]).map((f) => ({
-                        name: f.name,
-                        type: 0,
-                        description: f.mandatory ? "Required" : null,
-                        fieldCategory: f.fieldType,
-                        serviceTypeName: f.serviceTypeName
-                      }))
-                    : ENTITY_FIELD_FALLBACKS[entity.builtinType].map((n) => ({ name: n, type: 0, description: null }))
                   : undefined
               }
               mdoLists={mdoLists}
               fakerPaths={fakerPaths}
               onToggle={() => toggleEntity(entity._id)}
               onRemove={() => removeEntity(entity._id)}
-              onChangeBuiltinType={(t) => changeBuiltinType(entity._id, t)}
               onUpdateEntity={(patch) => updateEntity(entity._id, patch)}
               onAddField={() => addField(entity._id)}
               onRemoveField={(fid) => removeField(entity._id, fid)}
@@ -736,13 +563,11 @@ export function TemplateForm({ template }: TemplateFormProps = {}) {
 interface EntityCardProps {
   entity: EntityState;
   entityNames: string[];
-  mode: TemplateMode;
   tableFields?: DbModelField[];
   mdoLists: MdoListDef[];
   fakerPaths: string[];
   onToggle: () => void;
   onRemove: () => void;
-  onChangeBuiltinType: (t: BuiltinEntityType | "") => void;
   onUpdateEntity: (patch: Partial<EntityState>) => void;
   onAddField: () => void;
   onRemoveField: (fid: string) => void;
@@ -759,13 +584,11 @@ interface EntityCardProps {
 function EntityCard({
   entity,
   entityNames,
-  mode,
   tableFields,
   mdoLists,
   fakerPaths,
   onToggle,
   onRemove,
-  onChangeBuiltinType,
   onUpdateEntity,
   onAddField,
   onRemoveField,
@@ -791,20 +614,6 @@ function EntityCard({
           {entity.expanded ? "▼" : "▶"}
         </button>
         <span className="text-base leading-none">{icon}</span>
-
-        {/* Builtin type selector — only shown in entity mode */}
-        {mode === "entity" && (
-          <select
-            aria-label="Builtin entity type"
-            value={entity.builtinType}
-            onChange={(e) => onChangeBuiltinType(e.target.value as BuiltinEntityType | "")}
-            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 focus:border-brand focus:outline-none"
-          >
-            {BUILTIN_TYPES.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-        )}
 
         {/* Entity name */}
         <input

@@ -64,13 +64,6 @@ export default async function TemplatesPage({
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="truncate text-sm font-semibold text-slate-900">{template.name}</p>
-                    <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-xs font-medium ${
-                      template.mode === "massops"
-                        ? "border-violet-200 bg-violet-50 text-violet-700"
-                        : "border-sky-200 bg-sky-50 text-sky-700"
-                    }`}>
-                      {template.mode === "massops" ? "massops" : "entity"}
-                    </span>
                   </div>
                   <p className="truncate text-xs text-slate-400">{template.description}</p>
                 </div>

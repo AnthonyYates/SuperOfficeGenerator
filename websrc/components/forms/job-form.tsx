@@ -71,14 +71,6 @@ export function JobForm({ templates }: JobFormProps) {
             ))}
           </select>
         </label>
-        {selectedTemplate && (
-          <p className="mt-1 text-xs text-slate-400">
-            Mode:{" "}
-            <span className={`font-medium ${selectedTemplate.mode === "massops" ? "text-violet-600" : "text-sky-600"}`}>
-              {selectedTemplate.mode === "massops" ? "mass operations" : "entity agents"}
-            </span>
-          </p>
-        )}
       </div>
       <div>
         <p className="text-sm font-medium text-slate-700 mb-1">Locales</p>

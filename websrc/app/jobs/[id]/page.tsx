@@ -28,12 +28,6 @@ export default async function JobDetailPage({ params }: { params: { id: string }
               <dt>Status</dt>
               <dd className={`pill ${job.status === "succeeded" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : job.status === "failed" ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}>{job.status}</dd>
             </div>
-            <div className="flex items-center justify-between">
-              <dt>API mode</dt>
-              <dd className={`pill ${(job.apiMode ?? "entity") === "massops" ? "border-violet-200 bg-violet-50 text-violet-700" : "border-sky-200 bg-sky-50 text-sky-700"}`}>
-                {(job.apiMode ?? "entity") === "massops" ? "Mass operations" : "Entity agents"}
-              </dd>
-            </div>
           </dl>
         </div>
         <div className="card space-y-3">
