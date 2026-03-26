@@ -83,4 +83,6 @@ websrc/storage/*.db
 websrc/storage/*.db-journal
 websrc/storage/*.db-shm
 websrc/storage/*.db-wal
+websrc/prism/storage/*.db
 /.claude
+websrc/prisma/storage/app.db
