@@ -5,31 +5,6 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { enqueueJob, saveTemplate, updateTemplate, deleteTemplate, deleteJob, duplicateTemplate } from "@/lib/services";
 
-// Columns automatically injected by the execution engine for each builtin entity type.
-// Users must not define field rules for these columns — the engine sets them and duplicates cause job errors.
-const SYSTEM_COLUMNS: Record<string, string[]> = {
-  company:  ["contact_id", "business_idx", "category_idx", "country_id"],
-  contact:  ["person_id", "contact_id", "rank", "country_id", "business_idx", "category_idx"],
-  followUp: ["appointment_id", "contact_id", "person_id", "sale_id", "project_id", "associate_id", "group_idx", "task_idx", "type", "status", "done", "do_by", "endDate", "activeDate"],
-  project:  ["project_id", "type_idx", "status_idx", "project_number", "associate_id", "group_id"],
-  sale:     ["sale_id", "contact_id", "person_id", "project_id", "saleType_id", "source_id", "saledate", "status", "probability_idx", "appointment_id", "associate_id", "group_idx"]
-};
-
-function checkSystemColumnConflicts(
-  entities: Array<{ name: string; builtinType?: string; fields: Array<{ field: string }> }>
-): string | null {
-  for (const entity of entities) {
-    if (!entity.builtinType) continue;
-    const sysColumns = SYSTEM_COLUMNS[entity.builtinType] ?? [];
-    for (const f of entity.fields) {
-      if (sysColumns.includes(f.field)) {
-        return `"${f.field}" on entity "${entity.name}" is managed automatically — remove it from your fields.`;
-      }
-    }
-  }
-  return null;
-}
-
 const fieldRuleSchema = z.object({
   field: z.string().min(1),
   strategy: z.enum(["static", "faker", "list", "sequence", "fk", "mdolist"]),
@@ -98,9 +73,6 @@ export async function createTemplateAction(
     return { error: parsed.error.flatten().fieldErrors, success: false };
   }
 
-  const conflict = checkSystemColumnConflicts(parsed.data.entities);
-  if (conflict) return { error: conflict, success: false };
-
   await saveTemplate(parsed.data);
   revalidatePath("/templates");
   return { error: null, success: true };
@@ -127,9 +99,6 @@ export async function updateTemplateAction(
   if (!parsed.success) {
     return { error: parsed.error.flatten().fieldErrors, success: false };
   }
-
-  const conflict = checkSystemColumnConflicts(parsed.data.entities);
-  if (conflict) return { error: conflict, success: false };
 
   await updateTemplate(id, parsed.data);
   revalidatePath("/templates");
