@@ -11,7 +11,7 @@ model Template {
   id            String   @id
   name          String
   description   String
-  mode          String   @default("entity")  // "entity" | "massops"
+  mode          String   @default("massops")
   entities      String   // JSON: EntityDefinition[]
   schemaVersion Int      @default(1)
   createdBy     String
