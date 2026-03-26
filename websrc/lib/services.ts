@@ -74,7 +74,7 @@ export async function enqueueJob(request: JobRequest): Promise<JobManifest> {
     templateId: template.id,
     locales: request.locales.length ? request.locales : collectTemplateLocales(template),
     requestedCounts: request.counts,
-    apiMode: template.mode,   // derived from template — not a caller choice
+    apiMode: "massops",
     status: "queued",
     createdBy: request.createdBy,
     createdAt: new Date().toISOString(),

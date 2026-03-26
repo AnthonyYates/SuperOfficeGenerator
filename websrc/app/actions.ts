@@ -54,7 +54,7 @@ const secondaryTableSchema = z.object({
 const templateSchema = z.object({
   name: z.string().min(3),
   description: z.string().min(5),
-  mode: z.enum(["entity", "massops"]).default("entity"),
+  mode: z.literal("massops").default("massops"),
   schemaVersion: z.number().int().default(2),
   entities: z.array(
     z.object({
