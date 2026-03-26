@@ -7,7 +7,7 @@ export type BuiltinEntityType = "company" | "contact" | "followUp" | "project" |
 // ---------------------------------------------------------------------------
 
 /**
- * How a field value should be applied to the entity DTO in entity-agent mode.
+ * How a field value should be applied to the entity DTO.
  *   "string"         → set as a plain string value
  *   "integer"        → set as a plain string (engine parses where needed)
  *   "service-object" → wrap as { id: Number(value) } because the SDK expects a typed reference object

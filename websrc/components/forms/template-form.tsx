@@ -13,7 +13,7 @@ interface DbModelField {
   name: string;
   type: number;
   description: string | null;
-  // Present for entity-mode fields discovered from FieldProperties
+  // Signals that a value expects a numeric ID (displayed as "→id" in the picker) or drives the service-object auto-select strategy
   fieldCategory?: EntityFieldCategory;
   serviceTypeName?: string;
 }
@@ -48,7 +48,7 @@ interface FieldState {
   mdoListId: number | null;
   mdoListType: string;
   mdoListName: string;
-  // entity-agent mode hint (set when field is selected from FieldProperties-based picker)
+  // Signals that a value expects a numeric ID or drives the service-object auto-select strategy
   fieldCategory?: EntityFieldCategory;
 }
 
@@ -479,24 +479,24 @@ export function TemplateForm({ template }: TemplateFormProps = {}) {
           <p className="text-sm font-medium text-slate-700">Entities</p>
 
           <div className="flex items-center gap-2">
-              {dbModelLoading && (
-                <span className="text-xs text-slate-400">Loading DB model…</span>
-              )}
-              {dbModelError && (
-                <span className="text-xs text-rose-500">Failed to load: {dbModelError}</span>
-              )}
-              <select
-                aria-label="Select table to add"
-                onChange={(e) => { if (e.target.value) { addMassOpsEntity(e.target.value); e.currentTarget.value = ""; } }}
-                disabled={dbModelLoading || dbTables.length === 0}
-                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 focus:border-brand focus:outline-none disabled:opacity-50"
-              >
-                <option value="">+ Add table</option>
-                {dbTables.map((t) => (
-                  <option key={t.name} value={t.name}>{t.name}</option>
-                ))}
-              </select>
-            </div>
+            {dbModelLoading && (
+              <span className="text-xs text-slate-400">Loading DB model…</span>
+            )}
+            {dbModelError && (
+              <span className="text-xs text-rose-500">Failed to load: {dbModelError}</span>
+            )}
+            <select
+              aria-label="Select table to add"
+              onChange={(e) => { if (e.target.value) { addMassOpsEntity(e.target.value); e.currentTarget.value = ""; } }}
+              disabled={dbModelLoading || dbTables.length === 0}
+              className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 focus:border-brand focus:outline-none disabled:opacity-50"
+            >
+              <option value="">+ Add table</option>
+              {dbTables.map((t) => (
+                <option key={t.name} value={t.name}>{t.name}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {entities.length === 0 && (
