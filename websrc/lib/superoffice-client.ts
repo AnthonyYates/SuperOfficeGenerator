@@ -1,9 +1,4 @@
 import {
-  ContactAgent,
-  PersonAgent,
-  AppointmentAgent,
-  ProjectAgent,
-  SaleAgent,
   DatabaseTableAgent
 } from "@superoffice/webapi";
 import type { AxiosRequestConfig } from "axios";
@@ -14,27 +9,6 @@ function authorizedConfig(accessToken: string): AxiosRequestConfig {
       Authorization: `Bearer ${accessToken}`
     }
   };
-}
-
-// Legacy agent factories (webApiUrl comes from the OIDC webapi_url claim)
-export function createContactAgent(webApiUrl: string, accessToken: string) {
-  return new ContactAgent(webApiUrl, authorizedConfig(accessToken), "en");
-}
-
-export function createPersonAgent(webApiUrl: string, accessToken: string) {
-  return new PersonAgent(webApiUrl, authorizedConfig(accessToken), "en");
-}
-
-export function createAppointmentAgent(webApiUrl: string, accessToken: string) {
-  return new AppointmentAgent(webApiUrl, authorizedConfig(accessToken), "en");
-}
-
-export function createProjectAgent(webApiUrl: string, accessToken: string) {
-  return new ProjectAgent(webApiUrl, authorizedConfig(accessToken), "en");
-}
-
-export function createSaleAgent(webApiUrl: string, accessToken: string) {
-  return new SaleAgent(webApiUrl, authorizedConfig(accessToken), "en");
 }
 
 // MassOperations agent — used for bulk inserts via DatabaseTableAgent.upsertAsync()
