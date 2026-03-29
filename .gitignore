@@ -11,6 +11,7 @@
 # Visual Studio cache/options directory
 .vs/
 src/.vs/
+.vscode/settings.json
 
 # Build results
 [Dd]ebug/
