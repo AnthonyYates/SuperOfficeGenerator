@@ -2,13 +2,8 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { buildRefMap, unzipString, flattenTables, BLOCKED_TABLES } from "@/lib/db-model";
-import type { Database, DbModelTable } from "@/lib/db-model";
-
-// Module-level cache — survives across requests in the same Node.js process.
-// DB model changes rarely; 30-minute TTL is sufficient.
-let cache: { tables: DbModelTable[]; fetchedAt: number } | null = null;
-const CACHE_TTL_MS = 30 * 60 * 1000;
+import { getLatestDbModel, saveDbModel, getMemCache, setMemCache } from "@/lib/db-model-storage";
+import { downloadDbModel } from "@/lib/db-model-fetch";
 
 export async function GET() {
   const session = await auth();
@@ -16,35 +11,33 @@ export async function GET() {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 
-  if (cache && Date.now() - cache.fetchedAt < CACHE_TTL_MS) {
-    return NextResponse.json({ tables: cache.tables });
+  // 1. In-memory cache (fast path — same process, no DB round-trip)
+  const cached = getMemCache();
+  if (cached) {
+    return NextResponse.json({ tables: cached });
   }
 
-  const url = `${session.webApiUrl}v1/archive/dynamic?$select=databasemodel.databasemodel_id,databasemodel.ModelData`;
-  const resp = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${session.accessToken}`,
-      Accept: "application/json"
-    }
-  });
-
-  if (!resp.ok) {
-    return new NextResponse(`Upstream error ${resp.status}`, { status: resp.status });
+  // 2. Stored model in DB
+  const stored = await getLatestDbModel();
+  if (stored) {
+    setMemCache(stored.tables);
+    return NextResponse.json({
+      tables: stored.tables,
+      version: stored.version,
+      releaseDate: stored.releaseDate,
+    });
   }
 
-  const json = await resp.json() as { value?: Array<Record<string, string>> };
-  const base64: string = json.value?.[0]?.["databasemodel.ModelData"] ?? "";
-  if (!base64) {
-    return new NextResponse("ModelData missing in response", { status: 502 });
+  // 3. No stored model — download from SuperOffice, persist, and return
+  try {
+    const { tables, version, releaseDate } = await downloadDbModel(
+      session.accessToken,
+      session.webApiUrl
+    );
+    await saveDbModel(version, releaseDate, tables);
+    setMemCache(tables);
+    return NextResponse.json({ tables, version, releaseDate });
+  } catch (err) {
+    return new NextResponse(`Failed to fetch database model: ${err}`, { status: 502 });
   }
-
-  const binary = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-  const modelJson = await unzipString(binary);
-  const db = JSON.parse(modelJson) as Database;
-
-  const refMap = buildRefMap(db);
-  const tables = flattenTables(db, refMap, BLOCKED_TABLES);
-
-  cache = { tables, fetchedAt: Date.now() };
-  return NextResponse.json({ tables });
 }

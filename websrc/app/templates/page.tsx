@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { TemplateForm } from "@/components/forms/template-form";
+import { DbModelUpdateChecker } from "@/components/db-model-update-checker";
 import { listTemplates } from "@/lib/services";
 import { deleteTemplateAction, duplicateTemplateAction } from "@/app/actions";
 
@@ -39,6 +40,8 @@ export default async function TemplatesPage({
           fallbacks.
         </p>
       </header>
+
+      <DbModelUpdateChecker />
 
       <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
         {/* ── Left: form (wider) ── */}

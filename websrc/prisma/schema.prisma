@@ -36,3 +36,11 @@ model Job {
 
   template        Template  @relation(fields: [templateId], references: [id], onDelete: Cascade)
 }
+
+model DatabaseModel {
+  id           String   @id @default(cuid())
+  version      String   @unique // NetServerVersion e.g. "11.12.760.0"
+  releaseDate  DateTime // NetServerDate e.g. "2026-03-27"
+  downloadedAt DateTime @default(now())
+  tables       String   // JSON: DbModelTable[]
+}

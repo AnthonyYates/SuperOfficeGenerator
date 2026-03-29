@@ -259,6 +259,7 @@ export function flattenTables(
       if (!field || field.IsCsVirtual) continue;
       fields.push({ name: field.Name, type: field.Type, description: field.Description });
     }
+    fields.sort((a, b) => a.name.localeCompare(b.name));
 
     result.push({
       name: table.Name,
@@ -266,5 +267,6 @@ export function flattenTables(
       fields
     });
   }
+  result.sort((a, b) => a.name.localeCompare(b.name));
   return result;
 }
